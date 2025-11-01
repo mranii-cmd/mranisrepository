@@ -66,52 +66,60 @@ class LectureMail {
         };
     }
 
-    handleLectureCreated(lectureData) {
+    /**
+     * Generic handler for lecture events.
+     * @private
+     * @param {string} type - Event type
+     * @param {Object} lectureData - Lecture data
+     * @param {string} subjectPrefix - Subject line prefix
+     * @param {Function} bodyGenerator - Function to generate email body
+     */
+    handleLectureEvent(type, lectureData, subjectPrefix, bodyGenerator) {
         const email = this.createEmailObject(
-            'lecture:created',
+            type,
             lectureData,
-            `New Lecture: ${lectureData.title}`,
-            this.generateLectureCreatedBody(lectureData)
+            `${subjectPrefix}: ${lectureData.title}`,
+            bodyGenerator(lectureData)
         );
         if (email) {
             this.queueEmail(email);
         }
+    }
+
+    handleLectureCreated(lectureData) {
+        this.handleLectureEvent(
+            'lecture:created',
+            lectureData,
+            'New Lecture',
+            (data) => this.generateLectureCreatedBody(data)
+        );
     }
 
     handleLectureUpdated(lectureData) {
-        const email = this.createEmailObject(
+        this.handleLectureEvent(
             'lecture:updated',
             lectureData,
-            `Lecture Updated: ${lectureData.title}`,
-            this.generateLectureUpdatedBody(lectureData)
+            'Lecture Updated',
+            (data) => this.generateLectureUpdatedBody(data)
         );
-        if (email) {
-            this.queueEmail(email);
-        }
     }
 
     handleLectureCancelled(lectureData) {
-        const email = this.createEmailObject(
+        this.handleLectureEvent(
             'lecture:cancelled',
             lectureData,
-            `Lecture Cancelled: ${lectureData.title}`,
-            this.generateLectureCancelledBody(lectureData)
+            'Lecture Cancelled',
+            (data) => this.generateLectureCancelledBody(data)
         );
-        if (email) {
-            this.queueEmail(email);
-        }
     }
 
     handleLectureReminder(lectureData) {
-        const email = this.createEmailObject(
+        this.handleLectureEvent(
             'lecture:reminder',
             lectureData,
-            `Reminder: ${lectureData.title}`,
-            this.generateLectureReminderBody(lectureData)
+            'Reminder',
+            (data) => this.generateLectureReminderBody(data)
         );
-        if (email) {
-            this.queueEmail(email);
-        }
     }
 
     /**
@@ -169,23 +177,29 @@ class LectureMail {
         return recipients;
     }
 
-    generateLectureCreatedBody(lectureData) {
-        return `A new lecture has been scheduled:\n\n` +
-               `Title: ${lectureData.title}\n` +
+    /**
+     * Formats common lecture details for email body.
+     * @private
+     * @param {Object} lectureData - Lecture data
+     * @returns {string} Formatted lecture details
+     */
+    formatLectureDetails(lectureData) {
+        return `Title: ${lectureData.title}\n` +
                `Date: ${lectureData.date || 'TBD'}\n` +
                `Time: ${lectureData.time || 'TBD'}\n` +
                `Room: ${lectureData.room || 'TBD'}\n` +
-               `Teacher: ${lectureData.teacherName || 'TBD'}\n\n` +
+               `Teacher: ${lectureData.teacherName || 'TBD'}`;
+    }
+
+    generateLectureCreatedBody(lectureData) {
+        return `A new lecture has been scheduled:\n\n` +
+               `${this.formatLectureDetails(lectureData)}\n\n` +
                `Please mark your calendar accordingly.`;
     }
 
     generateLectureUpdatedBody(lectureData) {
         return `A lecture has been updated:\n\n` +
-               `Title: ${lectureData.title}\n` +
-               `Date: ${lectureData.date || 'TBD'}\n` +
-               `Time: ${lectureData.time || 'TBD'}\n` +
-               `Room: ${lectureData.room || 'TBD'}\n` +
-               `Teacher: ${lectureData.teacherName || 'TBD'}\n\n` +
+               `${this.formatLectureDetails(lectureData)}\n\n` +
                `Changes: ${lectureData.changes || 'See updated details above'}\n\n` +
                `Please check your schedule.`;
     }
@@ -201,11 +215,7 @@ class LectureMail {
 
     generateLectureReminderBody(lectureData) {
         return `Reminder: You have an upcoming lecture:\n\n` +
-               `Title: ${lectureData.title}\n` +
-               `Date: ${lectureData.date || 'TBD'}\n` +
-               `Time: ${lectureData.time || 'TBD'}\n` +
-               `Room: ${lectureData.room || 'TBD'}\n` +
-               `Teacher: ${lectureData.teacherName || 'TBD'}\n\n` +
+               `${this.formatLectureDetails(lectureData)}\n\n` +
                `Don't forget to attend!`;
     }
 
