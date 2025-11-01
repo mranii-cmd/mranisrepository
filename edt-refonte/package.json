@@ -1,0 +1,18 @@
+{
+  "name": "edt-gestion-universitaire",
+  "version": "3.0.0",
+  "description": "Système de gestion d'emploi du temps pour établissements universitaires",
+  "type": "module",
+  "scripts": {
+    "dev": "echo 'Vite sera configuré dans la prochaine issue'",
+    "build": "echo 'Build à configurer'",
+    "preview": "echo 'Preview à configurer'",
+    "lint": "echo 'ESLint à configurer'",
+    "format": "echo 'Prettier à configurer'"
+  },
+  "keywords": ["emploi-du-temps", "university", "schedule", "planning"],
+  "author": "Ibrahim Mrani - UCD",
+  "license": "MIT",
+  "devDependencies": {},
+  "dependencies": {}
+}
