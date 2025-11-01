@@ -116,13 +116,33 @@ class LectureMail {
 
     /**
      * Validates if a string is a valid email format.
+     * Uses a simple check to prevent ReDoS vulnerabilities.
      * @private
      * @param {string} email - Email address to validate
      * @returns {boolean} True if valid email format
      */
     isValidEmail(email) {
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        return emailRegex.test(email);
+        if (!email || typeof email !== 'string') {
+            return false;
+        }
+        
+        // Simple validation to prevent ReDoS: check for @ and . in the right positions
+        const atIndex = email.indexOf('@');
+        if (atIndex <= 0) {
+            return false;
+        }
+        
+        const dotIndex = email.lastIndexOf('.');
+        if (dotIndex <= atIndex + 1 || dotIndex >= email.length - 1) {
+            return false;
+        }
+        
+        // Check for no whitespace
+        if (/\s/.test(email)) {
+            return false;
+        }
+        
+        return true;
     }
 
     /**
