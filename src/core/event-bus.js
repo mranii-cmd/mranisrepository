@@ -20,3 +20,5 @@ class EventBus {
         this.listeners[event].forEach(listener => listener(data));
     }
 }
+
+export default EventBus;

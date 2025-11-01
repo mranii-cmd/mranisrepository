@@ -1,0 +1,13 @@
+{
+  "name": "mranisrepository",
+  "version": "1.0.0",
+  "description": "my repository",
+  "type": "module",
+  "main": "src/core/lecture-mail.js",
+  "scripts": {
+    "demo": "node demo-lecture-mail.js"
+  },
+  "keywords": ["education", "scheduling", "lectures", "email"],
+  "author": "",
+  "license": "ISC"
+}

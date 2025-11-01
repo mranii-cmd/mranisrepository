@@ -31,3 +31,5 @@ class ConflictDetector {
         return (timeSlot1.start < timeSlot2.end && timeSlot2.start < timeSlot1.end);
     }
 }
+
+export default ConflictDetector;
