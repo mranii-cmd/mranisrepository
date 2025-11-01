@@ -1,4 +1,25 @@
+/**
+ * LectureMail class handles automated email notifications for lecture-related events.
+ * It integrates with EventBus to listen for lecture events and send appropriate notifications.
+ * 
+ * @example
+ * const eventBus = new EventBus();
+ * const lectureMail = new LectureMail(eventBus);
+ * 
+ * eventBus.publish('lecture:created', {
+ *   id: 'lec-001',
+ *   title: 'Intro to JavaScript',
+ *   teacherEmail: 'teacher@example.com',
+ *   studentEmails: ['student1@example.com']
+ * });
+ * 
+ * lectureMail.processQueue();
+ */
 class LectureMail {
+    /**
+     * Creates a new LectureMail instance.
+     * @param {EventBus} eventBus - Optional EventBus instance for event-driven notifications
+     */
     constructor(eventBus) {
         this.eventBus = eventBus;
         this.emailQueue = [];
@@ -18,65 +39,111 @@ class LectureMail {
         this.eventBus.subscribe('lecture:reminder', (data) => this.handleLectureReminder(data));
     }
 
-    handleLectureCreated(lectureData) {
-        const email = {
-            type: 'lecture:created',
-            recipients: this.getRecipients(lectureData),
-            subject: `New Lecture: ${lectureData.title}`,
-            body: this.generateLectureCreatedBody(lectureData),
+    /**
+     * Creates an email object with standardized structure.
+     * @private
+     * @param {string} type - Email type (e.g., 'lecture:created')
+     * @param {Object} lectureData - Lecture data object
+     * @param {string} subject - Email subject
+     * @param {string} body - Email body content
+     * @returns {Object} Email object
+     */
+    createEmailObject(type, lectureData, subject, body) {
+        const recipients = this.getRecipients(lectureData);
+        
+        if (recipients.length === 0) {
+            console.warn(`No recipients found for ${type} event. Email not created.`);
+            return null;
+        }
+        
+        return {
+            type,
+            recipients,
+            subject,
+            body,
             timestamp: new Date().toISOString(),
             lectureId: lectureData.id
         };
-        this.queueEmail(email);
+    }
+
+    handleLectureCreated(lectureData) {
+        const email = this.createEmailObject(
+            'lecture:created',
+            lectureData,
+            `New Lecture: ${lectureData.title}`,
+            this.generateLectureCreatedBody(lectureData)
+        );
+        if (email) {
+            this.queueEmail(email);
+        }
     }
 
     handleLectureUpdated(lectureData) {
-        const email = {
-            type: 'lecture:updated',
-            recipients: this.getRecipients(lectureData),
-            subject: `Lecture Updated: ${lectureData.title}`,
-            body: this.generateLectureUpdatedBody(lectureData),
-            timestamp: new Date().toISOString(),
-            lectureId: lectureData.id
-        };
-        this.queueEmail(email);
+        const email = this.createEmailObject(
+            'lecture:updated',
+            lectureData,
+            `Lecture Updated: ${lectureData.title}`,
+            this.generateLectureUpdatedBody(lectureData)
+        );
+        if (email) {
+            this.queueEmail(email);
+        }
     }
 
     handleLectureCancelled(lectureData) {
-        const email = {
-            type: 'lecture:cancelled',
-            recipients: this.getRecipients(lectureData),
-            subject: `Lecture Cancelled: ${lectureData.title}`,
-            body: this.generateLectureCancelledBody(lectureData),
-            timestamp: new Date().toISOString(),
-            lectureId: lectureData.id
-        };
-        this.queueEmail(email);
+        const email = this.createEmailObject(
+            'lecture:cancelled',
+            lectureData,
+            `Lecture Cancelled: ${lectureData.title}`,
+            this.generateLectureCancelledBody(lectureData)
+        );
+        if (email) {
+            this.queueEmail(email);
+        }
     }
 
     handleLectureReminder(lectureData) {
-        const email = {
-            type: 'lecture:reminder',
-            recipients: this.getRecipients(lectureData),
-            subject: `Reminder: ${lectureData.title}`,
-            body: this.generateLectureReminderBody(lectureData),
-            timestamp: new Date().toISOString(),
-            lectureId: lectureData.id
-        };
-        this.queueEmail(email);
+        const email = this.createEmailObject(
+            'lecture:reminder',
+            lectureData,
+            `Reminder: ${lectureData.title}`,
+            this.generateLectureReminderBody(lectureData)
+        );
+        if (email) {
+            this.queueEmail(email);
+        }
     }
 
+    /**
+     * Validates if a string is a valid email format.
+     * @private
+     * @param {string} email - Email address to validate
+     * @returns {boolean} True if valid email format
+     */
+    isValidEmail(email) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        return emailRegex.test(email);
+    }
+
+    /**
+     * Extracts and validates recipient email addresses from lecture data.
+     * @param {Object} lectureData - Lecture data containing email addresses
+     * @returns {Array<string>} Array of valid email addresses
+     */
     getRecipients(lectureData) {
         const recipients = [];
         
-        // Add teacher email if available
-        if (lectureData.teacherEmail) {
+        // Add teacher email if available and valid
+        if (lectureData.teacherEmail && this.isValidEmail(lectureData.teacherEmail)) {
             recipients.push(lectureData.teacherEmail);
         }
         
-        // Add student emails if available
+        // Add student emails if available and valid
         if (lectureData.studentEmails && Array.isArray(lectureData.studentEmails)) {
-            recipients.push(...lectureData.studentEmails);
+            const validStudentEmails = lectureData.studentEmails.filter(email => 
+                email && this.isValidEmail(email)
+            );
+            recipients.push(...validStudentEmails);
         }
         
         return recipients;
@@ -122,39 +189,77 @@ class LectureMail {
                `Don't forget to attend!`;
     }
 
+    /**
+     * Adds an email to the queue for later processing.
+     * @param {Object} email - Email object to queue
+     * @returns {Object} The queued email object
+     */
     queueEmail(email) {
         this.emailQueue.push(email);
         return email;
     }
 
+    /**
+     * Sends a single email.
+     * In production, this should integrate with an actual email service.
+     * @param {Object} email - Email object to send
+     * @returns {Object} Result object with success status and optional error
+     */
     sendEmail(email) {
-        // In a real implementation, this would integrate with an email service
-        // For now, we'll simulate sending and log the email
-        console.log('Sending email:', {
-            to: email.recipients,
-            subject: email.subject,
-            body: email.body
-        });
-        
-        this.sentEmails.push({
-            ...email,
-            sentAt: new Date().toISOString(),
-            status: 'sent'
-        });
-        
-        return true;
+        try {
+            // Validate recipients exist
+            if (!email.recipients || email.recipients.length === 0) {
+                throw new Error('No recipients specified');
+            }
+            
+            // In a real implementation, this would integrate with an email service
+            // For now, we'll simulate sending and log the email
+            console.log('Sending email:', {
+                to: email.recipients,
+                subject: email.subject,
+                body: email.body
+            });
+            
+            this.sentEmails.push({
+                ...email,
+                sentAt: new Date().toISOString(),
+                status: 'sent'
+            });
+            
+            return { success: true };
+        } catch (error) {
+            console.error('Failed to send email:', error.message);
+            
+            this.sentEmails.push({
+                ...email,
+                sentAt: new Date().toISOString(),
+                status: 'failed',
+                error: error.message
+            });
+            
+            return { success: false, error: error.message };
+        }
     }
 
+    /**
+     * Processes all emails in the queue.
+     * @returns {Array<Object>} Array of results with email and success status
+     */
     processQueue() {
         const results = [];
         while (this.emailQueue.length > 0) {
             const email = this.emailQueue.shift();
-            const success = this.sendEmail(email);
-            results.push({ email, success });
+            const result = this.sendEmail(email);
+            results.push({ email, ...result });
         }
         return results;
     }
 
+    /**
+     * Retrieves sent emails, optionally filtered by lecture ID.
+     * @param {string} lectureId - Optional lecture ID to filter by
+     * @returns {Array<Object>} Array of sent email objects
+     */
     getSentEmails(lectureId = null) {
         if (lectureId) {
             return this.sentEmails.filter(email => email.lectureId === lectureId);
@@ -162,14 +267,24 @@ class LectureMail {
         return this.sentEmails;
     }
 
+    /**
+     * Gets a copy of all queued emails waiting to be sent.
+     * @returns {Array<Object>} Array of queued email objects
+     */
     getQueuedEmails() {
         return [...this.emailQueue];
     }
 
+    /**
+     * Clears all emails from the queue without sending them.
+     */
     clearQueue() {
         this.emailQueue = [];
     }
 
+    /**
+     * Clears the history of sent emails.
+     */
     clearSentEmails() {
         this.sentEmails = [];
     }
