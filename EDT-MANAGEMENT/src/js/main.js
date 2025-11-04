@@ -685,6 +685,13 @@ class EDTApplication {
             });
         }
 
+        const btnExportForfaits = document.getElementById('btnExportForfaits');
+        if (btnExportForfaits) {
+            btnExportForfaits.addEventListener('click', () => {
+                ExportHandlers.exportForfaits();
+            });
+        }
+
         // === IMPORT (onglet rapports) ===
         const btnImportWishes = document.getElementById('btnImportWishes');
         const fileImportWishes = document.getElementById('fileImportWishes');
