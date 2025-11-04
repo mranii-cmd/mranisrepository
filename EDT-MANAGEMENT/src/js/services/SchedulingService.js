@@ -396,6 +396,17 @@ class SchedulingService {
 
                 if (!creneauCoupled) continue;
 
+                // CONTRAINTE: Ne pas planifier des TP de la même matière en parallèle
+                // Vérifier qu'aucun TP de la même matière n'est déjà planifié au même créneau
+                const parallelTPExists = allSeances.some(s => 
+                    s.type === 'TP' && 
+                    s.matiere === session.matiere &&
+                    s.jour === jour &&
+                    (s.creneau === creneau || s.creneau === creneauCoupled)
+                );
+
+                if (parallelTPExists) continue;
+
                 // Vérifier le premier créneau
                 const tempSession1 = session.clone();
                 tempSession1.jour = jour;
