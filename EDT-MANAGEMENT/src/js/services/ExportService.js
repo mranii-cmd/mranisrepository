@@ -375,13 +375,94 @@ class ExportService {
         doc.setFont(undefined, 'normal');
         doc.text(`${departement} | ${annee} | ${session}`, 148, 22, { align: 'center' });
 
-        // Tableau récapitulatif des interventions
+        // Informations de volume horaire
         let currentY = 30;
+        currentY = this.addTeacherVolumeInfo(doc, enseignant, allSeances, currentY);
+
+        // Tableau récapitulatif des interventions
+        currentY += 5;
         currentY = this.addTeacherInterventionsTable(doc, enseignant, seancesEnseignant, currentY);
 
         // Emploi du temps détaillé
         currentY += 5;
         this.addTeacherScheduleTable(doc, seancesEnseignant, currentY);
+    }
+
+    /**
+     * Ajoute les informations de volume horaire de l'enseignant
+     * @param {Object} doc - Document jsPDF
+     * @param {string} enseignant - Le nom de l'enseignant
+     * @param {Array} allSeances - Toutes les séances
+     * @param {number} startY - Position Y de départ
+     * @returns {number} Nouvelle position Y
+     */
+    addTeacherVolumeInfo(doc, enseignant, allSeances, startY) {
+        // Calculer les volumes de l'enseignant
+        const enseignants = StateManager.state.enseignants;
+        const forfaits = StateManager.state.forfaits || [];
+        
+        const allVolumes = VolumeService.calculateAllVolumes(
+            enseignants,
+            allSeances,
+            StateManager.state.enseignantVolumesSupplementaires,
+            StateManager.state.header.session,
+            StateManager.state.volumesAutomne
+        );
+
+        const globalMetrics = VolumeService.calculateGlobalVolumeMetrics(
+            StateManager.getCurrentSessionSubjects(),
+            allSeances,
+            enseignants.length,
+            StateManager.state.enseignantVolumesSupplementaires,
+            forfaits
+        );
+
+        // Trouver les volumes de cet enseignant
+        const enseignantVolume = allVolumes.find(v => v.enseignant === enseignant);
+        const volumeEnseignement = enseignantVolume ? enseignantVolume.totalVolume : 0;
+
+        // Calculer le volume des forfaits de cet enseignant
+        const volumeForfait = forfaits
+            .filter(f => f.enseignant === enseignant)
+            .reduce((sum, f) => sum + f.volumeHoraire, 0);
+
+        const volumeTotal = volumeEnseignement + volumeForfait;
+        const VHM = globalMetrics.globalVHM;
+
+        // Afficher les informations dans un encadré
+        doc.setFontSize(10);
+        doc.setFont(undefined, 'bold');
+        doc.text('Volumes Horaires:', 14, startY);
+
+        doc.setFont(undefined, 'normal');
+        const infoY = startY + 5;
+        const lineHeight = 5;
+
+        doc.text(`• Volume horaire d'enseignement : ${volumeEnseignement} hTP`, 20, infoY);
+        doc.text(`• Volume horaire forfait : ${volumeForfait} hTP`, 20, infoY + lineHeight);
+        doc.text(`• Volume horaire total : ${volumeTotal} hTP`, 20, infoY + lineHeight * 2);
+        doc.text(`• Volume horaire moyen (VHM) : ${VHM} hTP`, 20, infoY + lineHeight * 3);
+
+        // Ajouter un indicateur visuel si au-dessus ou en-dessous de la moyenne
+        const ecart = volumeTotal - VHM;
+        let ecartText = '';
+        if (ecart > 0) {
+            ecartText = `(+${ecart} hTP au-dessus de la moyenne)`;
+            doc.setTextColor(0, 150, 0); // Vert
+        } else if (ecart < 0) {
+            ecartText = `(${ecart} hTP en-dessous de la moyenne)`;
+            doc.setTextColor(200, 0, 0); // Rouge
+        } else {
+            ecartText = `(égal à la moyenne)`;
+        }
+        
+        if (ecartText) {
+            doc.setFont(undefined, 'italic');
+            doc.text(`  ${ecartText}`, 20, infoY + lineHeight * 4);
+            doc.setTextColor(0, 0, 0); // Retour au noir
+        }
+
+        return infoY + lineHeight * 4 + 3;
     }
 
     /**
