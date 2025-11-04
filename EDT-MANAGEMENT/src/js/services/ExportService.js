@@ -401,12 +401,11 @@ class ExportService {
         const enseignants = StateManager.state.enseignants;
         const forfaits = StateManager.state.forfaits || [];
         
-        const allVolumes = VolumeService.calculateAllVolumes(
-            enseignants,
+        // Calculer les détails de volume pour cet enseignant
+        const volumeDetails = VolumeService.calculateTeacherVolumeDetails(
+            enseignant,
             allSeances,
-            StateManager.state.enseignantVolumesSupplementaires,
-            StateManager.state.header.session,
-            StateManager.state.volumesAutomne
+            StateManager.state.enseignantVolumesSupplementaires
         );
 
         const globalMetrics = VolumeService.calculateGlobalVolumeMetrics(
@@ -417,9 +416,8 @@ class ExportService {
             forfaits
         );
 
-        // Trouver les volumes de cet enseignant
-        const enseignantVolume = allVolumes.find(v => v.enseignant === enseignant);
-        const volumeEnseignement = enseignantVolume ? enseignantVolume.totalVolume : 0;
+        // Volume d'enseignement (séances planifiées)
+        const volumeEnseignement = volumeDetails.enseignement || 0;
 
         // Calculer le volume des forfaits de cet enseignant
         const volumeForfait = forfaits
