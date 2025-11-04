@@ -427,40 +427,25 @@ class ExportService {
         const volumeTotal = volumeEnseignement + volumeForfait;
         const VHM = globalMetrics.globalVHM;
 
-        // Afficher les informations dans un encadré
+        // Afficher les informations sur une seule ligne
         doc.setFontSize(10);
         doc.setFont(undefined, 'bold');
-        doc.text('Volumes Horaires:', 14, startY);
-
-        doc.setFont(undefined, 'normal');
-        const infoY = startY + 5;
-        const lineHeight = 5;
-
-        doc.text(`• Volume horaire d'enseignement : ${volumeEnseignement} hTP`, 20, infoY);
-        doc.text(`• Volume horaire forfait : ${volumeForfait} hTP`, 20, infoY + lineHeight);
-        doc.text(`• Volume horaire total : ${volumeTotal} hTP`, 20, infoY + lineHeight * 2);
-        doc.text(`• Volume horaire moyen (VHM) : ${VHM} hTP`, 20, infoY + lineHeight * 3);
-
-        // Ajouter un indicateur visuel si au-dessus ou en-dessous de la moyenne
+        
+        // Construire le texte sur une seule ligne
         const ecart = volumeTotal - VHM;
         let ecartText = '';
         if (ecart > 0) {
-            ecartText = `(+${ecart} hTP au-dessus de la moyenne)`;
-            doc.setTextColor(0, 150, 0); // Vert
+            ecartText = ` (+${ecart}h)`;
         } else if (ecart < 0) {
-            ecartText = `(${ecart} hTP en-dessous de la moyenne)`;
-            doc.setTextColor(200, 0, 0); // Rouge
-        } else {
-            ecartText = `(égal à la moyenne)`;
+            ecartText = ` (${ecart}h)`;
         }
         
-        if (ecartText) {
-            doc.setFont(undefined, 'italic');
-            doc.text(`  ${ecartText}`, 20, infoY + lineHeight * 4);
-            doc.setTextColor(0, 0, 0); // Retour au noir
-        }
+        const volumeText = `Vol. Enseignement: ${volumeEnseignement}hTP | Vol. Forfait: ${volumeForfait}hTP | Vol. Total: ${volumeTotal}hTP | VHM: ${VHM}hTP${ecartText}`;
+        
+        doc.setFont(undefined, 'normal');
+        doc.text(volumeText, 14, startY);
 
-        return infoY + lineHeight * 4 + 3;
+        return startY + 3;
     }
 
     /**
@@ -501,8 +486,12 @@ class ExportService {
         const formatIntervenants = (set) => {
             if (set.size === 0) return '-';
 
-            const liste = Array.from(set).sort();
-            return liste.map(ens => ens === enseignant ? `[*] ${ens}` : ens).join(', ');
+            // Retirer l'enseignant concerné de la liste
+            const liste = Array.from(set)
+                .filter(ens => ens !== enseignant)
+                .sort();
+            
+            return liste.length > 0 ? liste.join(', ') : '-';
         };
 
         const tableData = [];
@@ -525,14 +514,10 @@ class ExportService {
         doc.setFont('helvetica', 'bold');
         doc.text('Recapitulatif des Interventions par Matiere', 14, startY);
 
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'italic');
-        doc.text('([*] = vous intervenez dans ce type de seance)', 14, startY + 4);
-
         doc.autoTable({
             head: [['Matiere', 'Intervenants Cours', 'Intervenants TD', 'Intervenants TP']],
             body: tableData,
-            startY: startY + 8,
+            startY: startY + 5,
             theme: 'grid',
             styles: {
                 font: 'helvetica',
@@ -552,16 +537,7 @@ class ExportService {
                 2: { cellWidth: 60 },
                 3: { cellWidth: 60 }
             },
-            margin: { left: 14, right: 14 },
-            didParseCell: (data) => {
-                if (data.section === 'body' && data.column.index > 0) {
-                    const cellValue = data.cell.text.join('');
-                    if (cellValue.includes('[*]')) {
-                        data.cell.styles.fontStyle = 'bold';
-                        data.cell.styles.textColor = [0, 100, 0];
-                    }
-                }
-            }
+            margin: { left: 14, right: 14 }
         });
 
         return doc.lastAutoTable.finalY;
