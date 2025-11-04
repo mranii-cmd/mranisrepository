@@ -585,6 +585,19 @@ class SchedulingService {
                     return null;
                 }
 
+                // CONTRAINTE: Ne pas planifier des Cours de la même matière en parallèle
+                // Vérifier qu'aucun Cours de la même matière n'est déjà planifié au même créneau
+                if (session.type === 'Cours') {
+                    const parallelCoursExists = allSeances.some(s => 
+                        s.type === 'Cours' && 
+                        s.matiere === session.matiere &&
+                        s.jour === jour &&
+                        s.creneau === creneau
+                    );
+
+                    if (parallelCoursExists) continue;
+                }
+
                 // Créer une copie temporaire
                 const tempSession = session.clone();
                 tempSession.jour = jour;
