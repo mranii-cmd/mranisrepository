@@ -4,6 +4,7 @@
  */
 
 import { DEFAULT_VOLUME_HTP } from '../config/constants.js';
+import StateManager from '../controllers/StateManager.js';
 
 class VolumeService {
     /**
@@ -38,10 +39,19 @@ class VolumeService {
             });
         }
 
+        // Ajouter les forfaits
+        let volumeForfaits = 0;
+        if (StateManager.state.forfaits) {
+            const forfaits = StateManager.state.forfaits.filter(f => f.enseignant === enseignant);
+            volumeForfaits = forfaits.reduce((sum, f) => sum + f.volumeHoraire, 0);
+        }
+
+        const volumeTotalForfait = volumeSupplementaire + volumeForfaits;
+
         return {
             enseignement: parseFloat(volumeEnseignement.toFixed(0)),
-            forfait: parseFloat(volumeSupplementaire.toFixed(0)),
-            total: parseFloat((volumeEnseignement + volumeSupplementaire).toFixed(0))
+            forfait: parseFloat(volumeTotalForfait.toFixed(0)),
+            total: parseFloat((volumeEnseignement + volumeTotalForfait).toFixed(0))
         };
     }
 
