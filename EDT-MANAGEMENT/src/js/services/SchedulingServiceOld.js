@@ -462,7 +462,8 @@ class SchedulingService {
             StateManager.getCurrentSessionSubjects(),
             allSeances,
             StateManager.state.enseignants.length,
-            StateManager.state.enseignantVolumesSupplementaires
+            StateManager.state.enseignantVolumesSupplementaires,
+            StateManager.state.forfaits || []
         );
 
         const maxWorkload = globalMetrics.globalVHM * 1.5; // Tolérance 150%

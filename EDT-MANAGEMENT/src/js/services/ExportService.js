@@ -160,7 +160,8 @@ class ExportService {
             subjects,
             seances,
             StateManager.state.enseignants.length,
-            StateManager.state.enseignantVolumesSupplementaires
+            StateManager.state.enseignantVolumesSupplementaires,
+            StateManager.state.forfaits || []
         );
 
         doc.setFontSize(12);

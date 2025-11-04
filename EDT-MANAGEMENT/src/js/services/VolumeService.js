@@ -135,9 +135,10 @@ class VolumeService {
      * @param {Array<Session>} seances - Les séances
      * @param {number} totalTeachers - Nombre total d'enseignants
      * @param {Object} volumesSupplementaires - Les volumes supplémentaires
+     * @param {Array} forfaits - Les forfaits (optionnel)
      * @returns {Object} { globalVHT, totalUniqueTeachers, totalRegisteredTeachers, globalVHM }
      */
-    calculateGlobalVolumeMetrics(subjects, seances, totalTeachers, volumesSupplementaires) {
+    calculateGlobalVolumeMetrics(subjects, seances, totalTeachers, volumesSupplementaires, forfaits = []) {
         let globalVHT = 0;
 
         // Calculer le VHT de toutes les matières
@@ -149,6 +150,13 @@ class VolumeService {
         for (const enseignant in volumesSupplementaires) {
             volumesSupplementaires[enseignant].forEach(item => {
                 globalVHT += item.volume;
+            });
+        }
+
+        // Ajouter les forfaits au VHT Global
+        if (forfaits && Array.isArray(forfaits)) {
+            forfaits.forEach(forfait => {
+                globalVHT += forfait.volumeHoraire;
             });
         }
 
