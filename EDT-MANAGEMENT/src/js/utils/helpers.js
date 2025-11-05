@@ -29,6 +29,25 @@ export function getSortedCreneauxKeys() {
 }
 
 /**
+ * Retourne les créneaux en donnant la priorité aux 4 premiers créneaux de la journée
+ * @returns {Array<string>} Les clés des créneaux avec priorité aux premiers créneaux
+ */
+export function getPrioritizedCreneauxKeys() {
+    const sorted = getSortedCreneauxKeys();
+    
+    // Prioriser les 4 premiers créneaux (généralement 8h30, 10h15, 14h00, 15h45)
+    // puis ajouter les créneaux restants (17h30, etc.)
+    if (sorted.length <= 4) {
+        return sorted;
+    }
+    
+    const prioritized = sorted.slice(0, 4);  // Les 4 premiers créneaux
+    const remaining = sorted.slice(4);        // Les créneaux restants
+    
+    return [...prioritized, ...remaining];
+}
+
+/**
  * Trouve l'index de la colonne séparatrice dans le tableau EDT
  * @returns {number} L'index de la colonne séparatrice, ou -1 si non trouvée
  */

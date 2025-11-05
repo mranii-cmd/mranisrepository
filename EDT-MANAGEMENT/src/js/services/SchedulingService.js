@@ -4,7 +4,7 @@
  */
 
 import { LISTE_JOURS, MAX_AUTO_PLANNING_ITERATIONS, CRENEAUX_COUPLES_SUIVANT } from '../config/constants.js';
-import { getSortedCreneauxKeys, isAfternoonCreneau } from '../utils/helpers.js';
+import { getSortedCreneauxKeys, getPrioritizedCreneauxKeys, isAfternoonCreneau } from '../utils/helpers.js';
 import Session from '../models/Session.js';
 import StateManager from '../controllers/StateManager.js';
 import ConflictService from './ConflictService.js';
@@ -332,7 +332,7 @@ class SchedulingService {
      * @returns {Object|null} { jour, creneau1, creneau2 } ou null
      */
     findPairedTDSlots(subject1, subject2, sectionName, group1Name, group2Name, options) {
-        const sortedCreneaux = getSortedCreneauxKeys();
+        const sortedCreneaux = getPrioritizedCreneauxKeys();  // Priorité aux 4 premiers créneaux
         const allSeances = StateManager.getSeances();
         const sallesInfo = StateManager.state.sallesInfo;
 
@@ -571,7 +571,7 @@ class SchedulingService {
      * @returns {Object|null} { jour, creneau } ou null
      */
     findAvailableSlot(session, options) {
-        const sortedCreneaux = getSortedCreneauxKeys();
+        const sortedCreneaux = getPrioritizedCreneauxKeys();  // Priorité aux 4 premiers créneaux
         const allSeances = StateManager.getSeances();
         const sallesInfo = StateManager.state.sallesInfo;
 
@@ -627,7 +627,7 @@ class SchedulingService {
      * @returns {Object|null} { jour, creneau, creneauCoupled } ou null
      */
     findAvailableCoupledSlot(session, options) {
-        const sortedCreneaux = getSortedCreneauxKeys();
+        const sortedCreneaux = getPrioritizedCreneauxKeys();  // Priorité aux 4 premiers créneaux
         const allSeances = StateManager.getSeances();
         const sallesInfo = StateManager.state.sallesInfo;
 
@@ -698,7 +698,7 @@ class SchedulingService {
 
         const teachers = StateManager.getTeachers();
         const allSeances = StateManager.getSeances();
-        const sortedCreneaux = getSortedCreneauxKeys();
+        const sortedCreneaux = getPrioritizedCreneauxKeys();  // Priorité aux 4 premiers créneaux
 
         // Calculer les volumes actuels
         const allVolumes = VolumeService.calculateAllVolumes(
