@@ -4,7 +4,7 @@
  */
 
 import { LISTE_JOURS, MAX_AUTO_PLANNING_ITERATIONS, CRENEAUX_COUPLES_SUIVANT } from '../config/constants.js';
-import { getSortedCreneauxKeys, getPrioritizedCreneauxKeys, isAfternoonCreneau } from '../utils/helpers.js';
+import { getSortedCreneauxKeys, getPrioritizedCreneauxKeys, getRotatedJours, isAfternoonCreneau } from '../utils/helpers.js';
 import Session from '../models/Session.js';
 import StateManager from '../controllers/StateManager.js';
 import ConflictService from './ConflictService.js';
@@ -13,6 +13,11 @@ import VolumeService from './VolumeService.js';
 import LogService from './LogService.js';
 
 class SchedulingService {
+    constructor() {
+        // Compteur pour rotation des jours (distribution équitable sur toute la semaine)
+        this.dayRotationCounter = 0;
+    }
+
     /**
      * Génère automatiquement toutes les séances manquantes
      * @param {Object} options - Options de génération
@@ -336,8 +341,9 @@ class SchedulingService {
         const allSeances = StateManager.getSeances();
         const sallesInfo = StateManager.state.sallesInfo;
 
-        // Essayer chaque jour de la semaine
-        for (const jour of LISTE_JOURS) {
+        // Essayer chaque jour de la semaine avec rotation pour distribution équitable
+        const rotatedJours = getRotatedJours(this.dayRotationCounter);
+        for (const jour of rotatedJours) {
             // Essayer chaque paire de créneaux consécutifs
             for (let i = 0; i < sortedCreneaux.length - 1; i++) {
                 const creneau1 = sortedCreneaux[i];

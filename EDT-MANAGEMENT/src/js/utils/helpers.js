@@ -32,6 +32,12 @@ export function getSortedCreneauxKeys() {
  * Retourne les créneaux en donnant la priorité aux 4 premiers créneaux de la journée
  * @returns {Array<string>} Les clés des créneaux avec priorité aux premiers créneaux
  */
+export function getSortedCreneauxKeys() {
+    return Object.keys(LISTE_CRENEAUX).sort((a, b) => {
+        return parseTimeToMinutes(LISTE_CRENEAUX[a].debut) - parseTimeToMinutes(LISTE_CRENEAUX[b].debut);
+    });
+}
+
 export function getPrioritizedCreneauxKeys() {
     const sorted = getSortedCreneauxKeys();
     
@@ -45,6 +51,24 @@ export function getPrioritizedCreneauxKeys() {
     const remaining = sorted.slice(4);        // Les créneaux restants
     
     return [...prioritized, ...remaining];
+}
+
+export function getRotatedJours(rotationCount) {
+    const jours = [...LISTE_JOURS];
+    const rotation = rotationCount % jours.length;
+    return [...jours.slice(rotation), ...jours.slice(0, rotation)];
+}
+
+/**
+ * Retourne les jours de la semaine avec rotation pour répartir uniformément
+ * Commence par un jour différent à chaque appel pour assurer une distribution équitable
+ * @param {Array<string>} jours - Liste des jours (Lundi à Samedi)
+ * @param {number} startIndex - Index de départ pour la rotation
+ * @returns {Array<string>} Les jours avec rotation
+ */
+export function getRotatedJours(jours, startIndex = 0) {
+    const index = startIndex % jours.length;
+    return [...jours.slice(index), ...jours.slice(0, index)];
 }
 
 /**
