@@ -46,11 +46,11 @@ export function getPrioritizedCreneauxKeys() {
 /**
  * Retourne les jours de la semaine avec rotation pour répartir uniformément
  * Commence par un jour différent à chaque appel pour assurer une distribution équitable
- * @param {Array<string>} jours - Liste des jours (Lundi à Samedi)
- * @param {number} startIndex - Index de départ pour la rotation
- * @returns {Array<string>} Les jours avec rotation
+ * @param {number} startIndex - Index de départ pour la rotation (0-5)
+ * @returns {Array<string>} Les jours avec rotation (Lundi à Samedi)
  */
-export function getRotatedJours(jours, startIndex = 0) {
+export function getRotatedJours(startIndex = 0) {
+    const jours = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
     const index = startIndex % jours.length;
     return [...jours.slice(index), ...jours.slice(0, index)];
 }
