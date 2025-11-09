@@ -1,10 +1,11 @@
 /**
  * Service de planification automatique des séances
  * @author Ibrahim Mrani - UCD
+ * @modified 2025-11-06 - Répartition équitable par filière sur toute la semaine
  */
 
 import { LISTE_JOURS, MAX_AUTO_PLANNING_ITERATIONS, CRENEAUX_COUPLES_SUIVANT } from '../config/constants.js';
-import { getSortedCreneauxKeys, isAfternoonCreneau } from '../utils/helpers.js';
+import { getSortedCreneauxKeys, getPrioritizedCreneauxKeys, getRotatedJours, isAfternoonCreneau } from '../utils/helpers.js';
 import Session from '../models/Session.js';
 import StateManager from '../controllers/StateManager.js';
 import ConflictService from './ConflictService.js';
@@ -13,11 +14,73 @@ import VolumeService from './VolumeService.js';
 import LogService from './LogService.js';
 
 class SchedulingService {
+    constructor() {
+        // Compteurs de rotation par filière pour distribution équitable
+        this.filiereRotationCounters = {};
+        this.globalDayRotationCounter = 0;
+    }
+
+    /**
+     * Obtient le compteur de rotation pour une filière
+     * @param {string} filiere - La filière
+     * @returns {number} Le compteur
+     */
+    getFiliereRotationCounter(filiere) {
+        if (!this.filiereRotationCounters[filiere]) {
+            this.filiereRotationCounters[filiere] = 0;
+        }
+        return this.filiereRotationCounters[filiere];
+    }
+
+    /**
+     * Incrémente le compteur de rotation pour une filière
+     * @param {string} filiere - La filière
+     */
+    incrementFiliereRotationCounter(filiere) {
+        if (!this.filiereRotationCounters[filiere]) {
+            this.filiereRotationCounters[filiere] = 0;
+        }
+        this.filiereRotationCounters[filiere]++;
+    }
+
+    /**
+     * Obtient les jours avec rotation spécifique à la filière
+     * @param {string} filiere - La filière
+     * @returns {Array<string>} Les jours avec rotation
+     */
+    getRotatedJoursForFiliere(filiere) {
+        const counter = this.getFiliereRotationCounter(filiere);
+        const rotatedJours = getRotatedJours(counter);
+
+        // Inclure le samedi matin (jusqu'à 10h15 maximum)
+        // On garde tous les jours y compris Samedi
+        return rotatedJours;
+    }
+
+    /**
+     * Vérifie si un créneau est autorisé le samedi (matin uniquement)
+     * @param {string} creneau - Le créneau
+     * @returns {boolean} True si autorisé
+     */
+    isSaturdayMorningSlot(creneau) {
+        const creneaux = getSortedCreneauxKeys();
+        const creneauIndex = creneaux.indexOf(creneau);
+
+        // Seulement les 2 premiers créneaux du samedi (8h30 et 10h15 généralement)
+        return creneauIndex <= 1;
+    }
+
     /**
      * Génère automatiquement toutes les séances manquantes
      * @param {Object} options - Options de génération
      * @returns {Object} { success: boolean, stats: Object }
      */
+    /**
+ * Génère automatiquement toutes les séances manquantes
+ * ET attribue les enseignants/salles aux séances existantes
+ * @param {Object} options - Options de génération
+ * @returns {Object} { success: boolean, stats: Object }
+ */
     async autoGenerateAllSessions(options = {}) {
         const {
             assignTeachers = true,
@@ -28,12 +91,88 @@ class SchedulingService {
 
         LogService.info('🚀 Début de la génération automatique...');
 
+        // Réinitialiser les compteurs de rotation
+        this.filiereRotationCounters = {};
+        this.globalDayRotationCounter = 0;
+
         const stats = {
             total: 0,
             created: 0,
             failed: 0,
-            skipped: 0
+            skipped: 0,
+            teachersAssigned: 0,
+            roomsAssigned: 0
         };
+
+        // ===== ÉTAPE 1 : Attribuer les enseignants aux séances EXISTANTES =====
+        if (assignTeachers) {
+            LogService.info('👨‍🏫 ÉTAPE 1 : Attribution des enseignants aux séances existantes...');
+
+            const allSeances = StateManager.getSeances();
+            const seancesSansEnseignant = allSeances.filter(s => !s.hasTeacher());
+
+            LogService.info(`📋 Trouvé ${seancesSansEnseignant.length} séance(s) sans enseignant`);
+
+            for (const seance of seancesSansEnseignant) {
+                try {
+                    const matiereInfo = StateManager.state.matiereGroupes[seance.matiere];
+                    const nbEnseignantsTP = (seance.type === 'TP' && matiereInfo)
+                        ? (matiereInfo.nbEnseignantsTP || 1)
+                        : 1;
+
+                    const teachers = this.assignTeachersToSession(seance, options, nbEnseignantsTP);
+
+                    if (teachers && teachers.length > 0) {
+                        seance.setTeachers(teachers);
+                        stats.teachersAssigned++;
+                        LogService.success(`✅ ${teachers.join(', ')} → ${seance.matiere} (${seance.type}) [${seance.jour} ${seance.creneau}]`);
+                    } else {
+                        LogService.warning(`⚠️ Aucun enseignant trouvé pour ${seance.matiere} (${seance.type}) [${seance.jour} ${seance.creneau}]`);
+                    }
+                } catch (error) {
+                    LogService.error(`❌ Erreur attribution enseignant: ${error.message}`);
+                }
+            }
+
+            if (stats.teachersAssigned > 0) {
+                StateManager.saveState();
+                LogService.success(`✅ ${stats.teachersAssigned} enseignant(s) attribué(s) aux séances existantes`);
+            }
+        }
+
+        // ===== ÉTAPE 2 : Attribuer les salles aux séances EXISTANTES =====
+        if (assignRooms) {
+            LogService.info('🏛️ ÉTAPE 2 : Attribution des salles aux séances existantes...');
+
+            const allSeances = StateManager.getSeances();
+            const seancesSansSalle = allSeances.filter(s => !s.hasRoom() && s.type !== 'TP');
+
+            LogService.info(`📋 Trouvé ${seancesSansSalle.length} séance(s) sans salle`);
+
+            for (const seance of seancesSansSalle) {
+                try {
+                    const room = this.assignRoomToSession(seance);
+
+                    if (room) {
+                        seance.setRoom(room);
+                        stats.roomsAssigned++;
+                        LogService.success(`✅ ${room} → ${seance.matiere} (${seance.type}) [${seance.jour} ${seance.creneau}]`);
+                    } else {
+                        LogService.warning(`⚠️ Aucune salle disponible pour ${seance.matiere} (${seance.type}) [${seance.jour} ${seance.creneau}]`);
+                    }
+                } catch (error) {
+                    LogService.error(`❌ Erreur attribution salle: ${error.message}`);
+                }
+            }
+
+            if (stats.roomsAssigned > 0) {
+                StateManager.saveState();
+                LogService.success(`✅ ${stats.roomsAssigned} salle(s) attribuée(s) aux séances existantes`);
+            }
+        }
+
+        // ===== ÉTAPE 3 : Créer les nouvelles séances manquantes =====
+        LogService.info('📅 ÉTAPE 3 : Création des séances manquantes...');
 
         const subjects = StateManager.getCurrentSessionSubjects();
 
@@ -49,7 +188,20 @@ class SchedulingService {
             stats.skipped += subjectStats.skipped;
         }
 
-        LogService.success(`✅ Génération terminée : ${stats.created}/${stats.total} séances créées`);
+        // ===== RÉSUMÉ FINAL =====
+        LogService.success(`
+╔════════════════════════════════════════════╗
+║  ✅ GÉNÉRATION TERMINÉE                    ║
+╠════════════════════════════════════════════╣
+║  📊 Nouvelles séances créées : ${stats.created.toString().padStart(3)}       ║
+║  ⏭️  Séances déjà existantes : ${stats.skipped.toString().padStart(3)}       ║
+║  ❌ Séances échouées         : ${stats.failed.toString().padStart(3)}       ║
+║  📋 Total théorique          : ${stats.total.toString().padStart(3)}       ║
+╠════════════════════════════════════════════╣
+║  👨‍🏫 Enseignants attribués    : ${stats.teachersAssigned.toString().padStart(3)}       ║
+║  🏛️  Salles attribuées        : ${stats.roomsAssigned.toString().padStart(3)}       ║
+╚════════════════════════════════════════════╝
+    `);
 
         return { success: true, stats };
     }
@@ -70,6 +222,8 @@ class SchedulingService {
 
         const existingSeances = StateManager.getSeances().filter(s => s.matiere === subject.nom);
 
+        LogService.info(`📚 Génération pour ${subject.nom} (Filière: ${subject.filiere})`);
+
         // Générer les séances de Cours
         const coursStats = await this.generateCoursSessions(subject, existingSeances, options);
         this.mergeStats(stats, coursStats);
@@ -86,7 +240,7 @@ class SchedulingService {
     }
 
     /**
-     * Génère les séances de Cours
+     * Génère les séances de Cours avec répartition hebdomadaire
      * @param {Subject} subject - La matière
      * @param {Array<Session>} existingSeances - Séances existantes
      * @param {Object} options - Options
@@ -102,7 +256,7 @@ class SchedulingService {
             stats.total++;
 
             // Vérifier si déjà existante
-            const exists = existingSeances.some(s => 
+            const exists = existingSeances.some(s =>
                 s.type === 'Cours' && s.section === sectionName
             );
 
@@ -114,8 +268,8 @@ class SchedulingService {
             // Créer la séance
             const session = this.createSessionTemplate(subject, 'Cours', sectionName, '');
 
-            // Trouver un créneau disponible
-            const slot = this.findAvailableSlot(session, options);
+            // Trouver un créneau disponible avec rotation par filière
+            const slot = this.findAvailableSlotWithRotation(session, subject.filiere, options);
 
             if (!slot) {
                 stats.failed++;
@@ -141,13 +295,18 @@ class SchedulingService {
             // Ajouter la séance
             StateManager.addSeance(session);
             stats.created++;
+
+            // Incrémenter le compteur de rotation pour cette filière
+            this.incrementFiliereRotationCounter(subject.filiere);
+
+            LogService.success(`✅ Cours créé: ${subject.nom} - ${sectionName} [${slot.jour} ${slot.creneau}]`);
         }
 
         return stats;
     }
 
     /**
-     * Génère les séances de TD
+     * Génère les séances de TD avec répartition hebdomadaire
      * @param {Subject} subject - La matière
      * @param {Array<Session>} existingSeances - Séances existantes
      * @param {Object} options - Options
@@ -174,7 +333,7 @@ class SchedulingService {
                     groupeName
                 );
 
-                const exists = existingSeances.some(s => 
+                const exists = existingSeances.some(s =>
                     s.type === 'TD' && s.uniqueStudentEntity === uniqueEntity
                 );
 
@@ -186,8 +345,8 @@ class SchedulingService {
                 // Créer la séance
                 const session = this.createSessionTemplate(subject, 'TD', sectionName, groupeName);
 
-                // Trouver un créneau disponible
-                const slot = this.findAvailableSlot(session, options);
+                // Trouver un créneau avec rotation par filière
+                const slot = this.findAvailableSlotWithRotation(session, subject.filiere, options);
 
                 if (!slot) {
                     stats.failed++;
@@ -213,6 +372,11 @@ class SchedulingService {
                 // Ajouter la séance
                 StateManager.addSeance(session);
                 stats.created++;
+
+                // Incrémenter le compteur de rotation
+                this.incrementFiliereRotationCounter(subject.filiere);
+
+                LogService.success(`✅ TD créé: ${subject.nom} - ${sectionName} ${groupeName} [${slot.jour} ${slot.creneau}]`);
             }
         }
 
@@ -220,7 +384,7 @@ class SchedulingService {
     }
 
     /**
-     * Génère les séances de TP
+     * Génère les séances de TP avec répartition hebdomadaire
      * @param {Subject} subject - La matière
      * @param {Array<Session>} existingSeances - Séances existantes
      * @param {Object} options - Options
@@ -247,7 +411,7 @@ class SchedulingService {
                     groupeName
                 );
 
-                const exists = existingSeances.some(s => 
+                const exists = existingSeances.some(s =>
                     s.type === 'TP' && s.uniqueStudentEntity === uniqueEntity && s.hTP_Affecte > 0
                 );
 
@@ -259,8 +423,8 @@ class SchedulingService {
                 // Créer la séance (première partie)
                 const session = this.createSessionTemplate(subject, 'TP', sectionName, groupeName);
 
-                // Trouver un créneau couplé disponible
-                const slot = this.findAvailableCoupledSlot(session, options);
+                // Trouver un créneau couplé disponible avec rotation
+                const slot = this.findAvailableCoupledSlotWithRotation(session, subject.filiere, options);
 
                 if (!slot) {
                     stats.failed++;
@@ -295,6 +459,11 @@ class SchedulingService {
                 StateManager.addSeance(secondPart);
 
                 stats.created++;
+
+                // Incrémenter le compteur de rotation
+                this.incrementFiliereRotationCounter(subject.filiere);
+
+                LogService.success(`✅ TP créé: ${subject.nom} - ${sectionName} ${groupeName} [${slot.jour} ${slot.creneau}-${slot.creneauCoupled}]`);
             }
         }
 
@@ -302,59 +471,45 @@ class SchedulingService {
     }
 
     /**
-     * Crée un template de séance
-     * @param {Subject} subject - La matière
-     * @param {string} type - Le type
-     * @param {string} section - La section
-     * @param {string} groupe - Le groupe TD/TP
-     * @returns {Session} La séance template
-     */
-    createSessionTemplate(subject, type, section, groupe) {
-        const uniqueEntity = Session.generateUniqueStudentEntity(
-            subject.filiere,
-            section,
-            type,
-            groupe
-        );
-
-        const groupeDisplay = Session.generateGroupe(section, type, groupe);
-
-        return new Session({
-            jour: '',
-            creneau: '',
-            filiere: subject.filiere,
-            matiere: subject.nom,
-            type,
-            section,
-            groupe: groupeDisplay,
-            uniqueStudentEntity: uniqueEntity,
-            enseignant: '',
-            enseignantsArray: [],
-            salle: '',
-            dureeAffichee: 1.5,
-            hTP_Affecte: subject.getVolumeHTP(type)
-        });
-    }
-
-    /**
-     * Trouve un créneau disponible pour une séance
+     * Trouve un créneau disponible avec rotation par filière
      * @param {Session} session - La séance
+     * @param {string} filiere - La filière
      * @param {Object} options - Options
      * @returns {Object|null} { jour, creneau } ou null
      */
-    findAvailableSlot(session, options) {
-        const sortedCreneaux = getSortedCreneauxKeys();
+    findAvailableSlotWithRotation(session, filiere, options) {
+        const sortedCreneaux = getPrioritizedCreneauxKeys();
         const allSeances = StateManager.getSeances();
         const sallesInfo = StateManager.state.sallesInfo;
+
+        // Obtenir les jours avec rotation pour cette filière
+        const rotatedJours = this.getRotatedJoursForFiliere(filiere);
 
         let iterations = 0;
         const maxIterations = MAX_AUTO_PLANNING_ITERATIONS;
 
-        for (const jour of LISTE_JOURS) {
-            for (const creneau of sortedCreneaux) {
+        for (const jour of rotatedJours) {
+            // Filtrage spécial pour le samedi (matin uniquement)
+            const creneauxToCheck = jour === 'Samedi'
+                ? sortedCreneaux.filter(c => this.isSaturdayMorningSlot(c))
+                : sortedCreneaux;
+
+            for (const creneau of creneauxToCheck) {
                 iterations++;
                 if (iterations > maxIterations) {
                     return null;
+                }
+
+                // CONTRAINTE: Ne pas planifier des Cours de la même matière en parallèle
+                if (session.type === 'Cours') {
+                    const parallelCoursExists = allSeances.some(s =>
+                        s.type === 'Cours' &&
+                        s.matiere === session.matiere &&
+                        s.jour === jour &&
+                        s.creneau === creneau
+                    );
+
+                    if (parallelCoursExists) continue;
                 }
 
                 // Créer une copie temporaire
@@ -380,21 +535,42 @@ class SchedulingService {
     }
 
     /**
-     * Trouve un créneau couplé disponible pour un TP
+     * Trouve un créneau couplé disponible pour un TP avec rotation
      * @param {Session} session - La séance TP
+     * @param {string} filiere - La filière
      * @param {Object} options - Options
      * @returns {Object|null} { jour, creneau, creneauCoupled } ou null
      */
-    findAvailableCoupledSlot(session, options) {
-        const sortedCreneaux = getSortedCreneauxKeys();
+    findAvailableCoupledSlotWithRotation(session, filiere, options) {
+        const sortedCreneaux = getPrioritizedCreneauxKeys();
         const allSeances = StateManager.getSeances();
         const sallesInfo = StateManager.state.sallesInfo;
 
-        for (const jour of LISTE_JOURS) {
-            for (const creneau of sortedCreneaux) {
+        // Obtenir les jours avec rotation pour cette filière
+        const rotatedJours = this.getRotatedJoursForFiliere(filiere);
+
+        for (const jour of rotatedJours) {
+            // Filtrage spécial pour le samedi (pas de TP couplé possible le samedi)
+            if (jour === 'Samedi') {
+                continue; // Les TP nécessitent 2 créneaux consécutifs, pas possible le samedi matin
+            }
+
+            const creneauxToCheck = sortedCreneaux;
+
+            for (const creneau of creneauxToCheck) {
                 const creneauCoupled = CRENEAUX_COUPLES_SUIVANT[creneau];
 
                 if (!creneauCoupled) continue;
+
+                // CONTRAINTE: Ne pas planifier des TP de la même matière en parallèle
+                const parallelTPExists = allSeances.some(s =>
+                    s.type === 'TP' &&
+                    s.matiere === session.matiere &&
+                    s.jour === jour &&
+                    (s.creneau === creneau || s.creneau === creneauCoupled)
+                );
+
+                if (parallelTPExists) continue;
 
                 // Vérifier le premier créneau
                 const tempSession1 = session.clone();
@@ -432,6 +608,43 @@ class SchedulingService {
         return null;
     }
 
+    // ... reste des méthodes existantes (createSessionTemplate, assignTeachersToSession, etc.) ...
+
+    /**
+     * Crée un template de séance
+     * @param {Subject} subject - La matière
+     * @param {string} type - Le type
+     * @param {string} section - La section
+     * @param {string} groupe - Le groupe TD/TP
+     * @returns {Session} La séance template
+     */
+    createSessionTemplate(subject, type, section, groupe) {
+        const uniqueEntity = Session.generateUniqueStudentEntity(
+            subject.filiere,
+            section,
+            type,
+            groupe
+        );
+
+        const groupeDisplay = Session.generateGroupe(section, type, groupe);
+
+        return new Session({
+            jour: '',
+            creneau: '',
+            filiere: subject.filiere,
+            matiere: subject.nom,
+            type,
+            section,
+            groupe: groupeDisplay,
+            uniqueStudentEntity: uniqueEntity,
+            enseignant: '',
+            enseignantsArray: [],
+            salle: '',
+            dureeAffichee: 1.5,
+            hTP_Affecte: subject.getVolumeHTP(type)
+        });
+    }
+
     /**
      * Attribue des enseignants à une séance
      * @param {Session} session - La séance
@@ -446,7 +659,7 @@ class SchedulingService {
 
         const teachers = StateManager.getTeachers();
         const allSeances = StateManager.getSeances();
-        const sortedCreneaux = getSortedCreneauxKeys();
+        const sortedCreneaux = getPrioritizedCreneauxKeys();
 
         // Calculer les volumes actuels
         const allVolumes = VolumeService.calculateAllVolumes(
@@ -461,11 +674,12 @@ class SchedulingService {
             StateManager.getCurrentSessionSubjects(),
             allSeances,
             StateManager.state.enseignants.length,
-            StateManager.state.enseignantVolumesSupplementaires
+            StateManager.state.enseignantVolumesSupplementaires,
+            StateManager.state.forfaits || []
         );
 
-        const maxWorkload = globalMetrics.globalVHM * 1.5; // Tolérance 150%
-        const assignedCounts = {}; // TODO: Calculer les compteurs réels
+        const maxWorkload = globalMetrics.globalVHM * 1.5;
+        const assignedCounts = {};
 
         const candidates = TeacherAvailabilityService.findBestCandidates(
             teachers,
@@ -487,6 +701,7 @@ class SchedulingService {
      * @returns {string} Le nom de la salle
      */
     assignRoomToSession(session) {
+        // 1. Obtenir toutes les salles libres compatibles
         const freeRooms = ConflictService.getFreeRooms(
             session.jour,
             session.creneau,
@@ -496,19 +711,40 @@ class SchedulingService {
         );
 
         if (freeRooms.length === 0) {
-            return '';
+            return ''; // Aucune salle libre
         }
 
-        // Priorité : salles spécifiques par filière si configurées
+        // 2. Vérifier si un pool de salles est défini
         const autoSalles = StateManager.state.autoSallesParFiliere[session.filiere];
-        if (autoSalles && autoSalles[session.type]) {
-            const preferredRoom = autoSalles[session.type];
-            if (freeRooms.includes(preferredRoom)) {
-                return preferredRoom;
+
+        if (autoSalles && autoSalles[session.type] && Array.isArray(autoSalles[session.type])) {
+
+            const preferredRooms = autoSalles[session.type]; // Le pool
+
+            // 3. Essayer de trouver une salle libre DANS le pool
+            const preferredAndFreeRoom = freeRooms.find(room => preferredRooms.includes(room));
+
+            if (preferredAndFreeRoom) {
+                // Cas 1: Succès, une salle du pool est libre
+                return preferredAndFreeRoom;
+            } else {
+                // Cas 2: Pool défini, mais plein.
+
+                // --- LOGIQUE CONDITIONNELLE ---
+                if (session.type === 'Cours') {
+                    // RÈGLE STRICTE pour les "Cours"
+                    LogService.warning(`[AutoSalle] Pool 'Cours' pour ${session.filiere} plein. Séance laissée sans salle.`);
+                    return ''; // On laisse sans salle
+                } else {
+                    // RÈGLE DE PRÉFÉRENCE (Fallback) pour TD/TP
+                    LogService.info(`[AutoSalle] Pool ${session.type} pour ${session.filiere} plein. Utilisation d'une autre salle disponible.`);
+                    return freeRooms[0]; // On prend la première salle libre hors pool
+                }
             }
         }
 
-        // Sinon, prendre la première salle libre
+        // Cas 3: Fallback. Aucun pool n'était défini pour cette filière/type.
+        // On prend la première salle libre compatible disponible.
         return freeRooms[0];
     }
 

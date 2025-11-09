@@ -221,6 +221,7 @@ class ExportHandlers {
             }
         );
     }
+
 }
 
 // Export d'une instance singleton

@@ -69,14 +69,14 @@ class TableRenderer {
 
         // Filtres de recherche
         const { matiere, enseignant, salle, sectionGroupe } = this.searchFilters;
-        
+
         if (matiere || enseignant || salle || sectionGroupe) {
             seances = seances.filter(s => {
                 const matchesMatiere = !matiere || (s.matiere || '').toLowerCase().includes(matiere.toLowerCase());
                 const matchesEnseignant = !enseignant || (s.enseignant || '').toLowerCase().includes(enseignant.toLowerCase());
                 const matchesSalle = !salle || (s.salle || '').toLowerCase().includes(salle.toLowerCase());
                 const matchesSectionGroupe = !sectionGroupe || (s.groupe || '').toLowerCase().includes(sectionGroupe.toLowerCase());
-                
+
                 return matchesMatiere && matchesEnseignant && matchesSalle && matchesSectionGroupe;
             });
         }
@@ -127,14 +127,14 @@ class TableRenderer {
 
         // En-tête
         let html = '<thead><tr><th>Jour/Heure</th>';
-        
+
         sortedCreneaux.forEach(c => {
             html += `<th>${c} - ${creneauxData[c].fin}</th>`;
             if (c === BREAK_CRENEAU) {
                 html += '<th class="separator-column"></th>';
             }
         });
-        
+
         html += '</tr></thead><tbody>';
 
         // Corps du tableau
@@ -143,12 +143,12 @@ class TableRenderer {
 
             sortedCreneaux.forEach(creneau => {
                 const seancesCell = seances.filter(s => s.jour === jour && s.creneau === creneau);
-                
+
                 html += `<td data-jour="${jour}" data-creneau="${creneau}" 
                     ondragover="EDTHandlers.handleDragOver(event)" 
                     ondragleave="EDTHandlers.handleDragLeave(event)" 
                     ondrop="EDTHandlers.handleDrop(event)">`;
-                
+
                 // Bouton d'ajout rapide
                 html += `<button class="add-seance-in-cell-btn" 
                     onclick="EDTHandlers.attribuerSeanceDirectement('${jour}', '${creneau}')" 
@@ -176,50 +176,59 @@ class TableRenderer {
     }
 
     /**
-     * Génère le HTML d'une séance
-     * @param {Session} seance - La séance
-     * @param {boolean} highlight - Mettre en surbrillance
-     * @returns {string} Le HTML de la séance
-     */
+  * Génère le HTML d'une séance
+  * @param {Session} seance - La séance
+  * @param {boolean} highlight - Mettre en surbrillance
+  * @returns {string} Le HTML de la séance
+  */
     generateSeanceHTML(seance, highlight = false) {
         const highlightClass = highlight ? 'highlight-search' : '';
-        
-        const nonAttribueeClass = !seance.hasTeacher() ? 'seance-non-attribuee' : '';
-        
+
+        // Récupérer le département sélectionné
+        const departement = StateManager.state.header.departement || '';
+        const isAdministration = departement === 'Administration';
+
+        // Pour Administration, ne pas appliquer le style "non-attribuée"
+        const nonAttribueeClass = (!seance.hasTeacher() && !isAdministration) ? 'seance-non-attribuee' : '';
+
         const isSansSalle = !seance.hasRoom() && seance.type !== 'TP';
         const sansSalleClass = isSansSalle ? 'seance-sans-salle' : '';
 
-        const filiereDisplay = seance.filiere 
-            ? `<span class="filiere-section">${safeText(seance.filiere)}</span>` 
+        const filiereDisplay = seance.filiere
+            ? `<span class="filiere-section">${safeText(seance.filiere)}</span>`
             : '';
-        
-        const groupeDisplay = (seance.groupe && seance.groupe !== 'N/A') 
-            ? `<span class="groupe-section">${safeText(seance.groupe)}</span><br>` 
+
+        const groupeDisplay = (seance.groupe && seance.groupe !== 'N/A')
+            ? `<span class="groupe-section">${safeText(seance.groupe)}</span><br>`
             : '';
-        
-        const enseignantsDisplay = seance.enseignant 
-            ? `<span class="enseignants">${safeText(seance.enseignant)}</span><br>` 
-            : '';
+
+        // ===== MODIFICATION ICI =====
+        // Affichage de l'enseignant avec gestion Administration
+        let enseignantsDisplay = '';
+        if (seance.enseignant) {
+            enseignantsDisplay = `<span class="enseignants">${safeText(seance.enseignant)}</span><br>`;
+        }
+        // ===== FIN MODIFICATION =====
 
         const salleDisplay = isSansSalle
             ? `<small class="salle-missing">Sans salle</small>`
             : `<small>${safeText(seance.salle || '')}</small>`;
 
         return `
-            <div class="seance ${safeText(seance.type)} ${highlightClass} ${nonAttribueeClass} ${sansSalleClass}" data-id="${seance.id}">
-                <button class="delete-btn" onclick="EDTHandlers.supprimerSeance(${seance.id})">x</button>
-                <div class="seance-data" draggable="true" 
-                    ondragstart="EDTHandlers.handleDragStart(event, ${seance.id})" 
-                    ondragend="EDTHandlers.handleDragEnd(event)" 
-                    onclick="EDTHandlers.ouvrirFormulairePourModifier(${seance.id})">
-                    <strong>${safeText(seance.matiere)} (${safeText(seance.type)})</strong><br>
-                    ${filiereDisplay}
-                    ${groupeDisplay}
-                    ${enseignantsDisplay}
-                    ${salleDisplay}
-                </div>
+        <div class="seance ${safeText(seance.type)} ${highlightClass} ${nonAttribueeClass} ${sansSalleClass}" data-id="${seance.id}">
+            <button class="delete-btn" onclick="EDTHandlers.supprimerSeance(${seance.id})">x</button>
+            <div class="seance-data" draggable="true" 
+                ondragstart="EDTHandlers.handleDragStart(event, ${seance.id})" 
+                ondragend="EDTHandlers.handleDragEnd(event)" 
+                onclick="EDTHandlers.ouvrirFormulairePourModifier(${seance.id})">
+                <strong>${safeText(seance.matiere)} (${safeText(seance.type)})</strong><br>
+                ${filiereDisplay}
+                ${groupeDisplay}
+                ${enseignantsDisplay}
+                ${salleDisplay}
             </div>
-        `;
+        </div>
+    `;
     }
 
     /**
@@ -248,7 +257,7 @@ class TableRenderer {
             sortedCreneaux.forEach(creneau => {
                 const seancesCell = seances.filter(s => s.jour === jour && s.creneau === creneau);
                 rowContent.push(seancesCell); // On passe les objets pour le rendu custom
-                
+
                 if (creneau === BREAK_CRENEAU) {
                     rowContent.push('');
                 }
@@ -269,14 +278,14 @@ class TableRenderer {
         const creneauxData = StateManager.state.creneaux;
 
         let html = '<table class="edt-print-table"><thead><tr><th>Jour/Heure</th>';
-        
+
         sortedCreneaux.forEach(c => {
             html += `<th>${c} - ${creneauxData[c].fin}</th>`;
             if (c === BREAK_CRENEAU) {
                 html += '<th class="separator-column"></th>';
             }
         });
-        
+
         html += '</tr></thead><tbody>';
 
         LISTE_JOURS.forEach(jour => {
@@ -284,9 +293,9 @@ class TableRenderer {
 
             sortedCreneaux.forEach(creneau => {
                 const seancesCell = seances.filter(s => s.jour === jour && s.creneau === creneau);
-                
+
                 html += '<td>';
-                
+
                 seancesCell.forEach(seance => {
                     html += `<div class="seance-simple ${seance.type}">`;
                     html += `<strong>${safeText(seance.matiere)} (${safeText(seance.type)})</strong><br>`;
