@@ -221,6 +221,65 @@ class ExportHandlers {
             }
         );
     }
+
+    /**
+     * Exporte les forfaits en Excel
+     */
+    async exportForfaits() {
+        SpinnerManager.show();
+
+        try {
+            // Import dynamique pour éviter les dépendances circulaires
+            const ForfaitController = (await import('../controllers/ForfaitController.js')).default;
+            const forfaits = ForfaitController.exportToExcel();
+
+            if (forfaits.length === 0) {
+                SpinnerManager.hide();
+                DialogManager.warning('Aucun forfait à exporter.');
+                return;
+            }
+
+            // Créer le fichier Excel
+            const XLSX = window.XLSX;
+            const ws = XLSX.utils.json_to_sheet(forfaits);
+
+            // Style des en-têtes
+            const range = XLSX.utils.decode_range(ws['!ref']);
+            for (let C = range.s.c; C <= range.e.c; ++C) {
+                const address = XLSX.utils.encode_col(C) + '1';
+                if (!ws[address]) continue;
+                ws[address].s = {
+                    font: { bold: true },
+                    fill: { fgColor: { rgb: 'CCCCCC' } }
+                };
+            }
+
+            // Définir la largeur des colonnes
+            ws['!cols'] = [
+                { wch: 25 }, // Enseignant
+                { wch: 30 }, // Nature
+                { wch: 12 }, // Volume
+                { wch: 40 }, // Description
+                { wch: 15 }  // Date
+            ];
+
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Forfaits');
+
+            // Télécharger le fichier
+            const fileName = `forfaits_${StateManager.state.header.annee || 'export'}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+            XLSX.writeFile(wb, fileName);
+
+            SpinnerManager.hide();
+            LogService.success('✅ Forfaits exportés avec succès');
+            NotificationManager.success('Forfaits exportés en Excel');
+
+        } catch (error) {
+            SpinnerManager.hide();
+            LogService.error(`❌ Erreur export forfaits : ${error.message}`);
+            DialogManager.error(`Erreur : ${error.message}`);
+        }
+    }
 }
 
 // Export d'une instance singleton

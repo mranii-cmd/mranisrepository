@@ -604,6 +604,7 @@
                 <button class="sub-tab-btn" data-subtab="enseignants">👨‍🏫 Enseignants</button>
                 <button class="sub-tab-btn" data-subtab="salles">🏛️ Salles</button>
                 <button class="sub-tab-btn" data-subtab="filieres">🎓 Filières</button>
+                <button class="sub-tab-btn" data-subtab="forfaits">💼 Forfaits</button>
             </div>
 
             <!-- ===== SOUS-ONGLET SÉANCES ===== -->
@@ -809,6 +810,54 @@
                 <div class="form-section">
                     <h3>🎓 Filières Enregistrées</h3>
                     <div id="configFilieresListContainer"></div>
+                </div>
+            </div>
+
+            <!-- ===== SOUS-ONGLET FORFAITS ===== -->
+            <div id="subtab-forfaits" class="sub-tab-pane">
+                <!-- Formulaire Ajouter Forfait -->
+                <div class="form-section">
+                    <h3>➕ Ajouter un Forfait</h3>
+                    <form id="formAjouterForfait">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="selectEnseignantForfait">Enseignant *</label>
+                                <select id="selectEnseignantForfait" required>
+                                    <option value="">-- Sélectionner un enseignant --</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="selectNatureForfait">Nature du forfait *</label>
+                                <select id="selectNatureForfait" required>
+                                    <option value="">-- Sélectionner --</option>
+                                    <option value="Chef de département">Chef de département</option>
+                                    <option value="Collège">Collège</option>
+                                    <option value="Master">Master</option>
+                                    <option value="Coordonnateur de filière">Coordonnateur de filière</option>
+                                    <option value="Autres">Autres</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="inputVolumeHoraireForfait">Volume horaire (h) *</label>
+                                <input type="number" id="inputVolumeHoraireForfait" min="0" step="0.5" required placeholder="Ex: 50">
+                            </div>
+                            <div class="form-group">
+                                <label for="inputDescriptionForfait">Description</label>
+                                <input type="text" id="inputDescriptionForfait" placeholder="Description optionnelle">
+                            </div>
+                        </div>
+                        <div style="margin-top: 20px; display: flex; gap: 10px;">
+                            <button type="submit" id="btnAjouterForfait" class="btn btn-primary">➕ Ajouter le Forfait</button>
+                            <button type="button" id="btnCancelForfaitEdit" class="btn btn-secondary" style="display: none;">❌ Annuler</button>
+                            <button type="button" id="btnResetForfaitForm" class="btn btn-secondary">🔄 Réinitialiser</button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Liste des Forfaits -->
+                <div class="form-section">
+                    <h3>💼 Forfaits Enregistrés</h3>
+                    <div id="forfaitsListContainer"></div>
                 </div>
             </div>
         </div>
@@ -1042,6 +1091,12 @@
             <div class="export-section">
                 <h3>📊 Export des Volumes Horaires</h3>
                 <button id="btnExportVolumes" class="btn btn-info">📊 Exporter Volumes (Excel)</button>
+            </div>
+
+            <!-- Export Forfaits -->
+            <div class="export-section">
+                <h3>💼 Export des Forfaits</h3>
+                <button id="btnExportForfaits" class="btn btn-info">💼 Exporter Forfaits (Excel)</button>
             </div>
 
             <!-- Import -->

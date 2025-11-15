@@ -28,6 +28,33 @@ export function getSortedCreneauxKeys() {
     });
 }
 
+export function getPrioritizedCreneauxKeys() {
+    const sorted = getSortedCreneauxKeys();
+    
+    // Prioriser les 4 premiers créneaux (généralement 8h30, 10h15, 14h00, 15h45)
+    // puis ajouter les créneaux restants (17h30, etc.)
+    if (sorted.length <= 4) {
+        return sorted;
+    }
+    
+    const prioritized = sorted.slice(0, 4);  // Les 4 premiers créneaux
+    const remaining = sorted.slice(4);        // Les créneaux restants
+    
+    return [...prioritized, ...remaining];
+}
+
+/**
+ * Retourne les jours de la semaine avec rotation pour répartir uniformément
+ * Commence par un jour différent à chaque appel pour assurer une distribution équitable
+ * @param {number} startIndex - Index de départ pour la rotation (0-5)
+ * @returns {Array<string>} Les jours avec rotation (Lundi à Samedi)
+ */
+export function getRotatedJours(startIndex = 0) {
+    const jours = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+    const index = startIndex % jours.length;
+    return [...jours.slice(index), ...jours.slice(0, index)];
+}
+
 /**
  * Trouve l'index de la colonne séparatrice dans le tableau EDT
  * @returns {number} L'index de la colonne séparatrice, ou -1 si non trouvée
