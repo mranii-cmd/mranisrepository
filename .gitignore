@@ -1,0 +1,4 @@
+node_modules/
+demo-lecture-mail.js
+.DS_Store
+*.log
