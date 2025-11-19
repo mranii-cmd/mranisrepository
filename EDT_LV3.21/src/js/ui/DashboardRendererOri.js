@@ -1,0 +1,893 @@
+/**
+ * Renderer pour le tableau de bord analytique avec graphiques Chart.js
+ * @author Ibrahim Mrani - UCD
+ */
+
+import DashboardController from '../controllers/DashboardController.js';
+import { safeText } from '../utils/sanitizers.js';
+import StateManager from '../controllers/StateManager.js';
+import SchedulingService from '../services/SchedulingService.js';
+import VolumeService from '../services/VolumeService.js';
+import { escapeHTML } from '../utils/sanitizers.js';
+import VolumeRenderer from '../ui/VolumeRenderer.js';
+
+class DashboardRenderer {
+    constructor() {
+        this.container = null;
+        this.charts = {}; // Stockage des instances Chart.js
+    }
+
+    /**
+     * Initialise le renderer
+     * @param {string} containerId - L'ID du conteneur
+     */
+    init(containerId = 'dashboardContainer') {
+        this.container = document.getElementById(containerId);
+        if (!this.container) {
+            console.warn(`Container #${containerId} not found`);
+        }
+    }
+
+    /**
+     * Rend le dashboard complet
+     */
+    render() {
+        if (!this.container) return;
+
+        const data = DashboardController.getDashboardData();
+
+        if (!data) {
+            this.container.innerHTML = '<p class="empty-message">Aucune donnée disponible</p>';
+            return;
+        }
+
+        const html = `
+            <div class="dashboard-container">
+                ${this.renderHeader()}
+                ${this.renderKPIs(data.kpis)}
+                ${this.renderAlerts(data.alerts)}
+                ${this.renderCharts(data)}
+                ${this.renderSubjectStats(data.subjectStats)}
+            </div>
+        `;
+
+        this.container.innerHTML = html;
+
+        // Initialiser les graphiques Chart.js après le rendu
+        this.initCharts(data);
+    }
+
+    /**
+     * Rend l'en-tête du dashboard
+     * @returns {string} HTML
+     */
+    renderHeader() {
+        return `
+            <div class="dashboard-header">
+                <div class="dashboard-title">
+                    <h2>📊 Dashboard Analytics</h2>
+                    <p class="dashboard-subtitle">Vue d'ensemble de votre emploi du temps</p>
+                </div>
+                <div class="dashboard-actions">
+                    <button class="btn btn-sm btn-secondary" onclick="window.EDTDashboardController?.refreshData()">
+                        🔄 Actualiser
+                    </button>
+                    <div class="btn-group">
+                        <button class="btn btn-sm btn-primary" onclick="window.EDTDashboardController?.exportDashboard('pdf')">
+                            📄 PDF
+                        </button>
+                        <button class="btn btn-sm btn-success" onclick="window.EDTDashboardController?.exportDashboard('excel')">
+                            📗 Excel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * Rend les KPIs
+     * @param {Object} kpis - Les données KPIs
+     * @returns {string} HTML
+     */
+    renderKPIs(kpis) {
+        return `
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="kpi-icon">📅</div>
+                    <div class="kpi-content">
+                        <div class="kpi-value">${kpis.totalSeances}</div>
+                        <div class="kpi-label">Séances Totales</div>
+                    </div>
+                </div>
+                
+                <div class="kpi-card">
+                    <div class="kpi-icon">👨‍🏫</div>
+                    <div class="kpi-content">
+                        <div class="kpi-value">${kpis.teacherAssignmentRate}%</div>
+                        <div class="kpi-label">Attribution Enseignants</div>
+                        <div class="kpi-subtext">${kpis.activeTeachers}/${kpis.totalTeachers} actifs</div>
+                    </div>
+                </div>
+                
+                <div class="kpi-card">
+                    <div class="kpi-icon">🏛️</div>
+                    <div class="kpi-content">
+                        <div class="kpi-value">${kpis.roomAssignmentRate}%</div>
+                        <div class="kpi-label">Attribution Salles</div>
+                        <div class="kpi-subtext">${kpis.usedRooms}/${kpis.totalRooms} utilisées</div>
+                    </div>
+                </div>
+                
+                <div class="kpi-card ${kpis.globalOccupancyRate > 70 ? 'kpi-success' : kpis.globalOccupancyRate > 50 ? 'kpi-warning' : 'kpi-danger'}">
+                    <div class="kpi-icon">📊</div>
+                    <div class="kpi-content">
+                        <div class="kpi-value">${kpis.globalOccupancyRate}%</div>
+                        <div class="kpi-label">Occupation Globale</div>
+                        <div class="kpi-subtext">Créneaux utilisés</div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * Rend les alertes
+     * @param {Array} alerts - Les alertes
+     * @returns {string} HTML
+     */
+    renderAlerts(alerts) {
+        if (!alerts || alerts.length === 0) {
+            return `
+                <div class="alerts-section">
+                    <div class="alert alert-success">
+                        <span class="alert-icon">✅</span>
+                        <div class="alert-content">
+                            <strong>Tout est OK !</strong>
+                            <p>Aucune alerte détectée pour le moment.</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        const alertsHtml = alerts.map(alert => `
+            <div class="alert alert-${alert.type}">
+                <span class="alert-icon">${alert.icon}</span>
+                <div class="alert-content">
+                    <strong>${alert.title}</strong>
+                    <p>${safeText(alert.message)}</p>
+                    ${alert.action ? `<small class="alert-action">💡 ${safeText(alert.action)}</small>` : ''}
+                </div>
+            </div>
+        `).join('');
+
+        return `
+            <div class="alerts-section">
+                <h3>🔔 Alertes et Recommandations</h3>
+                ${alertsHtml}
+            </div>
+        `;
+    }
+
+    /**
+     * Rend les conteneurs pour les graphiques
+     * @param {Object} data - Les données
+     * @returns {string} HTML
+     */
+    renderCharts(data) {
+        return `
+            <div class="charts-section">
+                <div class="charts-row">
+                    <div class="chart-container chart-large">
+                        <h3>👨‍🏫 Charge de Travail par Enseignant</h3>
+                        <canvas id="teachersWorkloadChart"></canvas>
+                    </div>
+                    
+                    <div class="chart-container chart-small">
+                        <h3>📊 Distribution des Séances</h3>
+                        <canvas id="sessionsDistributionChart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="charts-row">
+                    <div class="chart-container chart-medium">
+                        <h3>⏰ Heatmap des Créneaux</h3>
+                        <div id="timeSlotsHeatmap"></div>
+                    </div>
+                    
+                    <div class="chart-container chart-medium">
+                        <h3>🏛️ Occupation des Salles</h3>
+                        <canvas id="roomsOccupancyChart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="charts-row">
+                    <div class="chart-container chart-full">
+                        <h3>📈 Timeline Hebdomadaire</h3>
+                        <canvas id="weeklyTimelineChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * Helper : récupère les séances appartenant à la session courante (si labellées)
+     * Retourne [] si session non déterminée.
+     * @returns {Array}
+     */
+    getSessionSeances() {
+        const allSeances = (typeof StateManager.getSeances === 'function') ? StateManager.getSeances() : [];
+        const headerSession = (StateManager.state && StateManager.state.header && StateManager.state.header.session) ? String(StateManager.state.header.session).toLowerCase() : '';
+
+        let sessKey = null;
+        if (headerSession.includes('automne') || headerSession.includes('autumn')) sessKey = 'automne';
+        else if (headerSession.includes('printemps') || headerSession.includes('spring')) sessKey = 'printemps';
+
+        if (!sessKey) return []; // session non définie -> ne rien afficher par sécurité
+
+        return allSeances.filter(s => {
+            if (!s) return false;
+            const sSession = String(s.session || '').toLowerCase();
+            if (!sSession) return false; // n'inclure que séances explicitement labellisées
+            if (sessKey === 'automne') return sSession.includes('automne') || sSession.includes('autumn');
+            if (sessKey === 'printemps') return sSession.includes('printemps') || sSession.includes('spring');
+            return false;
+        });
+    }
+
+    /**
+     * Helper : récupère noms des filières de la session courante
+     * @returns {Array<string>}
+     */
+    getSessionFilieresNames() {
+        const headerSession = (StateManager.state && StateManager.state.header && StateManager.state.header.session) ? String(StateManager.state.header.session).toLowerCase() : '';
+        const filieres = StateManager.state.filieres || [];
+
+        let sessionType = null;
+        if (headerSession.includes('automne') || headerSession.includes('autumn')) sessionType = 'Automne';
+        else if (headerSession.includes('printemps') || headerSession.includes('spring')) sessionType = 'Printemps';
+
+        if (!sessionType) return [];
+
+        return (filieres || [])
+            .filter(f => f && String(f.session) === sessionType)
+            .map(f => String(f.nom || '').trim())
+            .filter(Boolean);
+    }
+
+    /**
+     * Rend les statistiques par matière
+     * Affiche uniquement les matières présentes dans la session courante.
+     * Si aucune séance labellée n'existe, on tente un fallback en utilisant les filières
+     * de la session courante pour sélectionner les matières.
+     * @param {Array} subjectStats - Les stats par matière (globales)
+     * @returns {string} HTML
+     */
+    renderSubjectStats(subjectStats) {
+        if (!subjectStats || subjectStats.length === 0) {
+            return '';
+        }
+
+        // déterminer la session et les séances correspondantes
+        const seancesSession = this.getSessionSeances();
+
+        // construire set des matières présentes dans la session (via séances labellées)
+        const subjectNamesInSession = new Set(
+            seancesSession
+                .map(s => (s.matiere || s.subject || s.nom || '').trim())
+                .filter(Boolean)
+        );
+
+        let filteredStats = [];
+
+        if (subjectNamesInSession.size > 0) {
+            // filtrer subjectStats pour ne garder que les matières présentes dans la session
+            filteredStats = subjectStats.filter(s => subjectNamesInSession.has(String(s.nom || '').trim()));
+        } else {
+            // fallback : utiliser les filières de la session pour lister les matières rattachées aux filières
+            const filieresNames = this.getSessionFilieresNames();
+
+            if (filieresNames.length > 0) {
+                filteredStats = subjectStats.filter(s => {
+                    const filiere = (s.filiere || (s.config && s.config.filiere) || '').trim();
+                    return filiere && filieresNames.includes(filiere);
+                });
+            } else {
+                // dernier recours : si ni séances labellées ni filières, essayer d'inferer via toutes les séances
+                const allSeances = (typeof StateManager.getSeances === 'function') ? StateManager.getSeances() : [];
+                const inferredNames = new Set(
+                    allSeances.map(s => (s.matiere || s.subject || s.nom || '').trim()).filter(Boolean)
+                );
+                filteredStats = subjectStats.filter(s => inferredNames.has(String(s.nom || '').trim()));
+            }
+        }
+
+        if (!filteredStats || filteredStats.length === 0) {
+            return `
+                <div class="subject-stats-section">
+                    <h3>📚 Statistiques par Matière — Session courante</h3>
+                    <p>Aucune matière planifiée pour la session courante ou données introuvables.</p>
+                </div>
+            `;
+        }
+
+        const statsHtml = filteredStats.map(s => `
+            <tr>
+                <td><strong>${safeText(s.nom)}</strong></td>
+                <td>${safeText(s.filiere)}</td>
+                <td>${s.totalSeances}</td>
+                <td>${s.cours}</td>
+                <td>${s.td}</td>
+                <td>${s.tp}</td>
+                <td>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar-fill" style="width: ${s.completion}%; background-color: ${this.getCompletionColor(s.completion)}"></div>
+                        <span class="progress-bar-text">${s.completion}%</span>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+
+        return `
+            <div class="subject-stats-section">
+                <h3>📚 Statistiques par Matière — Session courante</h3>
+                <table class="stats-table">
+                    <thead>
+                        <tr>
+                            <th>Matière</th>
+                            <th>Filière</th>
+                            <th>Total</th>
+                            <th>Cours</th>
+                            <th>TD</th>
+                            <th>TP</th>
+                            <th>Complétion</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${statsHtml}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    /**
+     * Initialise tous les graphiques Chart.js
+     * @param {Object} data - Les données
+     */
+    initCharts(data) {
+        // Détruire les graphiques existants
+        this.destroyCharts();
+
+        // 1. Graphique charge enseignants
+        this.initTeachersWorkloadChart(data.teachersWorkload);
+
+        // 2. Graphique distribution séances
+        this.initSessionsDistributionChart(data.sessionsDistribution);
+
+        // 3. Heatmap créneaux
+        this.initTimeSlotsHeatmap(data.timeSlotsHeatmap);
+
+        // 4. Graphique occupation salles
+        this.initRoomsOccupancyChart(data.roomsOccupancy);
+
+        // 5. Timeline hebdomadaire
+        this.initWeeklyTimelineChart(data.weeklyTimeline);
+    }
+
+    /**
+     * Initialise le graphique de charge enseignants (barres horizontales)
+     * @param {Array} data - Les données
+     */
+    // Remplacer uniquement la fonction initTeachersWorkloadChart par ce bloc
+initTeachersWorkloadChart(data) {
+    const ctx = document.getElementById('teachersWorkloadChart');
+    if (!ctx) return;
+
+    const normalize = s => String(s || '').trim().toLowerCase();
+    const normalizeMap = raw => {
+        const out = {};
+        Object.keys(raw || {}).forEach(k => { out[normalize(k)] = Number(raw[k] || 0); });
+        return out;
+    };
+
+    // Prefer imported VolumeRenderer, fallback to window.VolumeRenderer (if exposed)
+    const VR = (typeof VolumeRenderer !== 'undefined' && VolumeRenderer) ? VolumeRenderer
+             : (typeof window !== 'undefined' && window.VolumeRenderer) ? window.VolumeRenderer
+             : null;
+
+    let annualRaw = {};
+    let usedSource = null;
+
+    // Helper: detect aggregate/summary map (not per-teacher) by presence of known global keys
+    const looksLikeAggregate = (obj) => {
+        if (!obj || typeof obj !== 'object') return false;
+        const keys = Object.keys(obj).map(k => String(k).toLowerCase());
+        const aggregates = ['autumn','spring','annualvht','annualvhm','totalregisteredteachers','total','global','summary'];
+        return keys.some(k => aggregates.includes(k));
+    };
+
+    // Helper: try to extract numeric value from an object/value
+    const tryExtractNumericValue = (v) => {
+        if (v == null) return null;
+        if (typeof v === 'number' && !isNaN(v)) return Number(v);
+        if (typeof v === 'string' && v.trim() !== '' && !isNaN(Number(v))) return Number(v);
+        if (typeof v === 'object') {
+            // preferred keys
+            const cand = ['total','annual','volume','h','htp','hours','value','v','hTP','enseignement','forfait'];
+            for (let p of cand) {
+                if (v[p] !== undefined && !isNaN(Number(v[p]))) return Number(v[p]);
+            }
+            // fallback: any numeric child
+            for (let k in v) {
+                const c = v[k];
+                if (typeof c === 'number' && !isNaN(c)) return Number(c);
+                if (typeof c === 'string' && c.trim() !== '' && !isNaN(Number(c))) return Number(c);
+            }
+        }
+        return null;
+    };
+
+    // DFS to find a candidate map of name->number (heuristic)
+    const findTeacherMapDeep = (root) => {
+        const visited = new WeakSet();
+        let best = { map: null, score: 0, path: '' };
+
+        const scoreNode = (node) => {
+            if (!node || typeof node !== 'object') return 0;
+            let numericCount = 0;
+            let totalCount = 0;
+            for (let k of Object.keys(node)) {
+                totalCount++;
+                try {
+                    const v = node[k];
+                    const val = tryExtractNumericValue(v);
+                    if (val !== null) numericCount++;
+                    else {
+                        // if v is object, maybe nested teacher object => check children lightly
+                        if (v && typeof v === 'object') {
+                            const childNumeric = Object.keys(v).some(c => tryExtractNumericValue(v[c]) !== null);
+                            if (childNumeric) numericCount++;
+                        }
+                    }
+                } catch (e) {}
+            }
+            // score: numericCount weighted, prefer nodes with many entries
+            return numericCount >= 1 ? (numericCount * (totalCount >= 10 ? 2 : 1)) : 0;
+        };
+
+        const buildMapFromNode = (node) => {
+            const out = {};
+            for (let k of Object.keys(node)) {
+                const v = node[k];
+                const val = tryExtractNumericValue(v);
+                if (val !== null) out[k] = val;
+                else if (v && typeof v === 'object') {
+                    // try to extract numeric from child object
+                    const childVal = tryExtractNumericValue(v);
+                    if (childVal !== null) out[k] = childVal;
+                }
+            }
+            return out;
+        };
+
+        const dfs = (node, path, depth) => {
+            if (!node || typeof node !== 'object' || depth > 6) return;
+            if (visited.has(node)) return;
+            visited.add(node);
+
+            const score = scoreNode(node);
+            if (score > best.score) {
+                const candidateMap = buildMapFromNode(node);
+                if (Object.keys(candidateMap).length > 0) {
+                    best = { map: candidateMap, score, path };
+                }
+            }
+
+            for (let k of Object.keys(node)) {
+                try {
+                    const child = node[k];
+                    if (child && typeof child === 'object') dfs(child, path + '->' + k, depth + 1);
+                } catch (e) {}
+            }
+        };
+
+        dfs(root, 'root', 0);
+        return best;
+    };
+
+    // 1) Try direct VolumeRenderer outputs first (many candidate names)
+    if (VR) {
+        try {
+            const candidates = [
+                () => (typeof VR.getAnnualTeacherVolumes === 'function' ? VR.getAnnualTeacherVolumes() : null),
+                () => (typeof VR.getAllTeacherVolumes === 'function' ? VR.getAllTeacherVolumes() : null),
+                () => (typeof VR.getTeacherAnnualMap === 'function' ? VR.getTeacherAnnualMap() : null),
+                () => (VR.annualTeacherVolumes ? VR.annualTeacherVolumes : null),
+                () => (VR.annualVolumes ? VR.annualVolumes : null),
+                () => (VR.teacherAnnualVolumes ? VR.teacherAnnualVolumes : null),
+                () => (typeof VR.getVolumes === 'function' ? VR.getVolumes() : null),
+                () => (VR.state ? VR.state : null),
+                () => (VR.data ? VR.data : null),
+                () => (VR.metrics ? VR.metrics : null),
+                () => VR
+            ];
+
+            for (let g of candidates) {
+                let cand = null;
+                try { cand = g(); } catch (e) { cand = null; }
+                if (cand && typeof cand === 'object' && Object.keys(cand).length > 0) {
+                    // if cand looks immediately like teacher map (many keys, numeric or nested numeric), accept
+                    const bestTry = findTeacherMapDeep(cand);
+                    if (bestTry && bestTry.map && bestTry.score > 0) {
+                        annualRaw = bestTry.map;
+                        usedSource = 'VolumeRenderer (found in candidate via deep scan)';
+                        break;
+                    }
+                }
+            }
+
+            // If not found yet, deep scan the whole VR object
+            if ((!annualRaw || Object.keys(annualRaw).length === 0)) {
+                const best = findTeacherMapDeep(VR);
+                if (best && best.map && best.score > 0) {
+                    annualRaw = best.map;
+                    usedSource = 'VolumeRenderer (deep scan) -> ' + best.path;
+                } else {
+                    // If VolumeRenderer had only aggregate metrics (your case), note it
+                    if (looksLikeAggregate(VR)) {
+                        usedSource = 'VolumeRenderer (contains aggregates only)';
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('initTeachersWorkloadChart: error reading VolumeRenderer', e);
+            annualRaw = {};
+            usedSource = null;
+        }
+    }
+
+    // 2) Fallback: VolumeService.calculateAllVolumes(allSeances) or provided data
+    if (!annualRaw || Object.keys(annualRaw).length === 0) {
+        try {
+            if (typeof VolumeService !== 'undefined' && VolumeService && typeof VolumeService.calculateAllVolumes === 'function') {
+                const enseignants = StateManager.state.enseignants || [];
+                const allSeances = (typeof StateManager.getSeances === 'function') ? StateManager.getSeances() : [];
+                const combined = VolumeService.calculateAllVolumes(enseignants, allSeances, StateManager.state.enseignantVolumesSupplementaires || {}, StateManager.state.header.session || '', StateManager.state.volumesAutomne || {}) || {};
+                annualRaw = combined;
+                usedSource = 'VolumeService.calculateAllVolumes(allSeances)';
+            } else if (Array.isArray(data) && data.length) {
+                // dataset often contains current volumes — use as fallback
+                data.forEach(d => {
+                    const name = d.nom || d.name || '';
+                    const vol = Number(d.volume ?? d.value ?? d.v ?? d.h ?? 0) || 0;
+                    if (name) annualRaw[name] = (annualRaw[name] || 0) + vol;
+                });
+                usedSource = 'provided data array';
+            }
+        } catch (e) {
+            console.warn('initTeachersWorkloadChart: fallback annualRaw error', e);
+        }
+    }
+
+    // Normalize annualRaw keys
+    const annualMap = normalizeMap(annualRaw || {});
+
+    // Build teacher list (prefer StateManager names)
+    const enseignants = (StateManager.state && Array.isArray(StateManager.state.enseignants) && StateManager.state.enseignants.length)
+        ? StateManager.state.enseignants.slice()
+        : (Array.isArray(data) ? data.map(d => d.nom || d.name || '').filter(Boolean) : []);
+
+    // Construct array for chart
+    const list = enseignants.map(nomRaw => {
+        const key = normalize(nomRaw);
+        const annual = Math.round(Number(annualMap[key] || 0));
+        const base = Array.isArray(data) ? data.find(d => normalize(d.nom || d.name || '') === key) : null;
+        return {
+            nom: String(nomRaw || ''),
+            annual,
+            color: (base && base.color) || '#667eea',
+            status: (base && base.status) || ''
+        };
+    });
+
+    // If no enseignants but annualMap contains keys, use those
+    if ((!list || list.length === 0) && Object.keys(annualMap).length > 0) {
+        Object.keys(annualMap).forEach(k => {
+            list.push({ nom: k, annual: Math.round(annualMap[k] || 0), color: '#667eea', status: '' });
+        });
+    }
+
+    // Sort & limit
+    const sorted = list.sort((a, b) => b.annual - a.annual).slice(0, 30);
+
+    // Chart arrays
+    const labels = sorted.map(s => s.nom);
+    const volumes = sorted.map(s => s.annual);
+    const colors = sorted.map(s => s.color);
+
+    // Compute reference
+    let referenceValue = 0;
+    try {
+        if (typeof SchedulingService !== 'undefined' && typeof SchedulingService.computeMaxWorkloadForCurrentSession === 'function') {
+            referenceValue = Number(SchedulingService.computeMaxWorkloadForCurrentSession() || 0);
+        } else if (StateManager && StateManager.state && StateManager.state.toleranceMaxWorkload !== undefined) {
+            referenceValue = Number(StateManager.state.toleranceMaxWorkload || 0);
+        }
+    } catch (err) {
+        console.warn('initTeachersWorkloadChart: unable to compute referenceValue', err);
+    }
+
+    console.debug('initTeachersWorkloadChart: usedSource=', usedSource, 'annualMap sample=', Object.entries(annualMap).slice(0,12), 'sorted sample=', sorted.slice(0,12));
+
+    // Render chart
+    this.charts.teachersWorkload = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [
+                {
+                    label: 'Volume annuel (hTP)',
+                    data: volumes,
+                    backgroundColor: colors,
+                    borderColor: colors,
+                    borderWidth: 1
+                },
+                {
+                    type: 'line',
+                    label: 'Référence',
+                    data: labels.map(() => referenceValue),
+                    borderColor: 'rgba(220, 53, 69, 0.95)',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    borderDash: [6, 4],
+                    fill: false,
+                    order: 2
+                }
+            ]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'top' },
+                tooltip: {
+                    callbacks: {
+                        label: (ctxItem) => {
+                            if (!ctxItem) return '';
+                            const idx = ctxItem.dataIndex;
+                            const val = volumes[idx] || 0;
+                            const teacher = sorted[idx] || {};
+                            return `${val} h — ${teacher.status || ''}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: { beginAtZero: true, title: { display: true, text: 'Volume hTP' } }
+            }
+        }
+    });
+}
+
+    /**
+     * Initialise le graphique de distribution (camembert)
+     * @param {Object} data - Les données
+     */
+    initSessionsDistributionChart(data) {
+        const ctx = document.getElementById('sessionsDistributionChart');
+        if (!ctx) return;
+
+        this.charts.sessionsDistribution = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    data: data.data,
+                    backgroundColor: data.colors,
+                    borderColor: '#fff',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => {
+                                const label = context.label || '';
+                                const value = context.parsed || 0;
+                                const percentage = ((value / data.total) * 100).toFixed(1);
+                                return `${label}: ${value} (${percentage}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    /**
+     * Initialise la heatmap des créneaux
+     * @param {Object} data - Les données
+     */
+    initTimeSlotsHeatmap(data) {
+        const container = document.getElementById('timeSlotsHeatmap');
+        if (!container) return;
+
+        let html = '<table class="heatmap-table"><thead><tr><th>Jour/Créneau</th>';
+
+        // En-têtes créneaux
+        data.creneaux.forEach(creneau => {
+            html += `<th>${creneau}</th>`;
+        });
+        html += '</tr></thead><tbody>';
+
+        // Lignes jours
+        data.jours.forEach(jour => {
+            html += `<tr><th>${jour}</th>`;
+            data.creneaux.forEach(creneau => {
+                const cell = data.data[jour][creneau];
+                html += `<td class="heatmap-cell heatmap-${cell.level}" style="background-color: ${cell.color}" title="${cell.count} séance(s)">
+                    ${cell.count > 0 ? cell.count : ''}
+                </td>`;
+            });
+            html += '</tr>';
+        });
+
+        html += '</tbody></table>';
+
+        // Légende
+        html += `
+            <div class="heatmap-legend">
+                <span class="legend-item"><span class="legend-color" style="background-color: #e9ecef"></span> Vide</span>
+                <span class="legend-item"><span class="legend-color" style="background-color: #d1ecf1"></span> Faible</span>
+                <span class="legend-item"><span class="legend-color" style="background-color: #fff3cd"></span> Moyen</span>
+                <span class="legend-item"><span class="legend-color" style="background-color: #f8d7da"></span> Élevé</span>
+            </div>
+        `;
+
+        container.innerHTML = html;
+    }
+
+    /**
+     * Initialise le graphique d'occupation des salles
+     * @param {Array} data - Les données
+     */
+    initRoomsOccupancyChart(data) {
+        const ctx = document.getElementById('roomsOccupancyChart');
+        if (!ctx) return;
+
+        // Limiter aux 10 premières salles
+        const topRooms = data.slice(0, 10);
+
+        this.charts.roomsOccupancy = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: topRooms.map(r => r.salle),
+                datasets: [{
+                    label: 'Taux d\'occupation (%)',
+                    data: topRooms.map(r => r.occupancyRate),
+                    backgroundColor: topRooms.map(r => r.color),
+                    borderColor: topRooms.map(r => r.color),
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => {
+                                const room = topRooms[context.dataIndex];
+                                return `${context.parsed.y}% (${room.totalSeances} séances)`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        title: {
+                            display: true,
+                            text: 'Taux d\'occupation (%)'
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    /**
+     * Initialise le graphique timeline hebdomadaire
+     * @param {Object} data - Les données
+     */
+    initWeeklyTimelineChart(data) {
+        const ctx = document.getElementById('weeklyTimelineChart');
+        if (!ctx) return;
+
+        this.charts.weeklyTimeline = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    label: 'Nombre de séances',
+                    data: data.data,
+                    borderColor: '#667eea',
+                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 5,
+                    pointHoverRadius: 7
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            afterLabel: (context) => {
+                                return `Moyenne: ${data.average} séances/jour`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Nombre de séances'
+                        },
+                        ticks: {
+                            stepSize: 1
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    /**
+     * Détruit tous les graphiques
+     */
+    destroyCharts() {
+        Object.values(this.charts).forEach(chart => {
+            if (chart && typeof chart.destroy === 'function') {
+                chart.destroy();
+            }
+        });
+        this.charts = {};
+    }
+
+    /**
+     * Obtient la couleur selon le taux de complétion
+     * @param {number} completion - Le pourcentage
+     * @returns {string} La couleur
+     */
+    getCompletionColor(completion) {
+        if (completion >= 100) return '#28a745';
+        if (completion >= 75) return '#ffc107';
+        if (completion >= 50) return '#fd7e14';
+        return '#dc3545';
+    }
+}
+
+// Export d'une instance singleton
+export default new DashboardRenderer();
