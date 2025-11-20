@@ -5,7 +5,7 @@
 
 import StateManager from '../controllers/StateManager.js';
 import { safeText } from '../utils/sanitizers.js';
-import { escapeHTML } from '../utils/sanitizers.js';
+// import { escapeHTML } from '../utils/sanitizers.js';
 
 class WishesRenderer {
     constructor() {

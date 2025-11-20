@@ -8,7 +8,7 @@ import { safeText } from '../utils/sanitizers.js';
 import StateManager from '../controllers/StateManager.js';
 import SchedulingService from '../services/SchedulingService.js';
 import VolumeService from '../services/VolumeService.js';
-import { escapeHTML } from '../utils/sanitizers.js';
+// import { escapeHTML } from '../utils/sanitizers.js';
 import VolumeRenderer from '../ui/VolumeRenderer.js';
 
 class DashboardRenderer {

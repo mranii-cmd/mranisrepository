@@ -7,7 +7,7 @@ import { LISTE_JOURS, SEANCE_COLORS, BREAK_CRENEAU } from '../config/constants.j
 import { getSortedCreneauxKeys, getSeparatorColumnIndex } from '../utils/helpers.js';
 import { safeText } from '../utils/sanitizers.js';
 import StateManager from '../controllers/StateManager.js';
-import { escapeHTML } from '../utils/sanitizers.js';
+// import { escapeHTML } from '../utils/sanitizers.js';
 
 class TableRenderer {
     constructor() {

@@ -12,7 +12,7 @@ import DialogManager from '../ui/DialogManager.js';
 import TableRenderer from '../ui/TableRenderer.js';
 import SchedulingService from '../services/SchedulingService.js'; // <-- ajouté
 import SubjectController from '../controllers/SubjectController.js';
-import { escapeHTML } from '../utils/sanitizers.js';
+// import { escapeHTML } from '../utils/sanitizers.js';
 
 class FormHandlers {
     /**

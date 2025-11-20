@@ -8,7 +8,7 @@ import DialogManager from '../ui/DialogManager.js';
 import TableRenderer from '../ui/TableRenderer.js';
 import FormManager from '../ui/FormManager.js';
 import FormHandlers from './FormHandlers.js';
-import { escapeHTML } from '../utils/sanitizers.js';
+// import { escapeHTML } from '../utils/sanitizers.js';
 
 class EventHandlers {
     constructor() {

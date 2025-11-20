@@ -1,4 +1,4 @@
-import { escapeHTML } from '../utils/sanitizers.js';
+// import { escapeHTML } from '../utils/sanitizers.js';
 /**
  * Gestionnaire du spinner de chargement
  * @author Ibrahim Mrani - UCD

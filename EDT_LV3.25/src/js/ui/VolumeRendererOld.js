@@ -358,67 +358,17 @@ class VolumeRenderer {
     /**
      * Rend le tableau des volumes par matière (session courante)
      * @returns {string} HTML du tableau
-     *
-     * Modifié : n'affiche que les matières attachées aux filières de la session courante.
      */
     renderSubjectVolumes() {
-        const subjects = SubjectController.getAllSubjectsWithStats() || [];
-        const filieres = StateManager.state.filieres || [];
+        const subjects = SubjectController.getAllSubjectsWithStats();
+        const seances = StateManager.getSeances();
 
-        // Determine current session and corresponding human label
-        const headerSessionRaw = (StateManager.state && StateManager.state.header && StateManager.state.header.session) ? StateManager.state.header.session : '';
-        const normalized = normalizeSessionLabel(headerSessionRaw); // 'autumn'|'spring'|'unknown'
-        let sessionLabelHuman = null;
-        if (normalized === 'autumn') sessionLabelHuman = 'Automne';
-        else if (normalized === 'spring') sessionLabelHuman = 'Printemps';
-
-        // If session unknown -> show all subjects (but put a note)
-        let subjectsToShow = subjects;
-        let noteHtml = '';
-        if (!sessionLabelHuman) {
-            noteHtml = `<div class="subjects-note">Session non définie — affichage de toutes les matières</div>`;
-        } else {
-            // collect filiere names for this session
-            const filieresForSession = filieres
-                .filter(f => String(f.session || '').toLowerCase() === sessionLabelHuman.toLowerCase())
-                .map(f => String(f.nom || '').trim())
-                .filter(Boolean);
-
-            if (filieresForSession.length === 0) {
-                return `
-                    <div class="subject-volumes">
-                        <h3>📚 Volumes Horaires par Matière (session courante)</h3>
-                        <div class="empty-message">Aucune filière configurée pour la session ${safeText(sessionLabelHuman)}.</div>
-                    </div>
-                `;
-            }
-
-            // filter subjects by their configured filiere (support multiple storage shapes)
-            subjectsToShow = subjects.filter(s => {
-                const cfgFiliere = (s.config && s.config.filiere) ? String(s.config.filiere).trim()
-                    : (StateManager.state.matiereGroupes && StateManager.state.matiereGroupes[s.nom] ? StateManager.state.matiereGroupes[s.nom].filiere : '');
-                return cfgFiliere && filieresForSession.includes(cfgFiliere);
-            });
-
-            noteHtml = `<div class="subjects-note">Matières pour la session ${safeText(sessionLabelHuman)}</div>`;
-        }
-
-        // Sort by VHT desc
-        subjectsToShow.sort((a, b) => (b.stats?.vht || 0) - (a.stats?.vht || 0));
-
-        if (!subjectsToShow || subjectsToShow.length === 0) {
-            return `
-                <div class="subject-volumes">
-                    <h3>📚 Volumes Horaires par Matière (session courante)</h3>
-                    <div class="empty-message">Aucune matière disponible pour la sélection actuelle.</div>
-                </div>
-            `;
-        }
+        // Trier par VHT décroissant
+        subjects.sort((a, b) => b.stats.vht - a.stats.vht);
 
         let html = `
             <div class="subject-volumes">
                 <h3>📚 Volumes Horaires par Matière (session courante)</h3>
-                ${noteHtml}
                 <table class="volumes-table">
                     <thead>
                         <tr>
@@ -436,15 +386,15 @@ class VolumeRenderer {
                     <tbody>
         `;
 
-        subjectsToShow.forEach(subject => {
+        subjects.forEach(subject => {
             const completion = subject.stats.completionRate;
             const completionClass = completion >= 100 ? 'complete' : completion >= 50 ? 'partial' : 'incomplete';
 
             html += `
                 <tr>
                     <td><strong>${safeText(subject.nom)}</strong></td>
-                    <td>${safeText((subject.config && subject.config.filiere) || (StateManager.state.matiereGroupes && StateManager.state.matiereGroupes[subject.nom] ? StateManager.state.matiereGroupes[subject.nom].filiere : '') )}</td>
-                    <td>${safeText(String((subject.config && subject.config.sections_cours) || (subject.config?.sections_cours) || 0))}</td>
+                    <td>${safeText(subject.config.filiere)}</td>
+                    <td>${safeText(String(subject.config.sections_cours || 0))}</td>
                     <td><strong>${safeText(String(subject.stats.vht || 0))}</strong></td>
                     <td>${safeText(String(subject.stats.plannedCours || 0))}/${safeText(String(subject.stats.expectedCours || 0))}</td>
                     <td>${safeText(String(subject.stats.plannedTD || 0))}/${safeText(String(subject.stats.expectedTD || 0))}</td>
@@ -465,7 +415,6 @@ class VolumeRenderer {
                 </table>
             </div>
         `;
-
         return html;
     }
 

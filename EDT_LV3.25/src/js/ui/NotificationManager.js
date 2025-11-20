@@ -4,7 +4,7 @@
  */
 
 import { safeText } from '../utils/sanitizers.js';
-import { escapeHTML } from '../utils/sanitizers.js';
+// import { escapeHTML } from '../utils/sanitizers.js';
 
 class NotificationManager {
     constructor() {

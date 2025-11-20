@@ -8,7 +8,7 @@ import LogService from '../services/LogService.js';
 import DialogManager from '../ui/DialogManager.js';
 import SpinnerManager from '../ui/SpinnerManager.js';
 import NotificationManager from '../ui/NotificationManager.js';
-import { escapeHTML } from '../utils/sanitizers.js';
+// import { escapeHTML } from '../utils/sanitizers.js';
 
 class ImportHandlers {
     /**

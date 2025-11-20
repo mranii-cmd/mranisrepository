@@ -8,7 +8,7 @@ import DashboardRenderer from '../ui/DashboardRenderer.js';
 import StateManager from '../controllers/StateManager.js';
 import LogService from '../services/LogService.js';
 import NotificationManager from '../ui/NotificationManager.js';
-import { escapeHTML } from '../utils/sanitizers.js';
+// import { escapeHTML } from '../utils/sanitizers.js';
 
 class DashboardHandlers {
     constructor() {

@@ -10,7 +10,7 @@ import SpinnerManager from '../ui/SpinnerManager.js';
 import NotificationManager from '../ui/NotificationManager.js';
 import TableRenderer from '../ui/TableRenderer.js';
 import StateManager from '../controllers/StateManager.js';
-import { escapeHTML } from '../utils/sanitizers.js';
+// import { escapeHTML } from '../utils/sanitizers.js';
 
 class ExportHandlers {
     /**

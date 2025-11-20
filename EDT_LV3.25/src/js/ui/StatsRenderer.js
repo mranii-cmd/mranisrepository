@@ -8,7 +8,7 @@ import SubjectController from '../controllers/SubjectController.js';
 import TeacherController from '../controllers/TeacherController.js';
 import RoomController from '../controllers/RoomController.js';
 import { safeText } from '../utils/sanitizers.js';
-import { escapeHTML } from '../utils/sanitizers.js';
+// import { escapeHTML } from '../utils/sanitizers.js';
 
 class StatsRenderer {
     constructor() {

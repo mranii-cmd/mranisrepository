@@ -8,7 +8,7 @@ import TeacherController from '../controllers/TeacherController.js';
 import SubjectController from '../controllers/SubjectController.js';
 import RoomController from '../controllers/RoomController.js';
 import { safeText } from '../utils/sanitizers.js';
-import { normalizeSessionLabel } from '../utils/session.js';
+// import { escapeHTML } from '../utils/sanitizers.js';
 
 class ListRenderer {
     constructor() {
@@ -68,8 +68,7 @@ class ListRenderer {
         `;
 
         if (teachers.length === 0) {
-            // utilisation d'un template literal pour éviter des soucis d'apostrophe
-            html += `<p class="empty-message">Aucun enseignant enregistré. Utilisez le bouton "Ajouter" ou allez dans l'onglet Configuration.</p>`;
+            html += '<p class="empty-message">Aucun enseignant enregistré. Utilisez le bouton "Ajouter" ou allez dans l\'onglet Configuration.</p>';
         } else {
             teachers.forEach(teacher => {
                 html += this.renderTeacherItem(teacher);
@@ -114,75 +113,24 @@ class ListRenderer {
 
     /**
      * Rend la liste des matières
-     *
-     * Nouveau comportement : n'affiche que les matières liées aux filières de la session courante.
-     * - Si session non déterminée on affiche tout (avec note).
-     * - Si aucune filière pour la session -> message informatif.
      */
     renderSubjectsList() {
         if (!this.containers.subjects) return;
 
-        // Récupérer toutes les matières (objets de SubjectController)
-        const allSubjects = SubjectController.getAllSubjectsWithStats() || [];
-
-        // Déterminer la session courante à partir du header
-        const headerSessionRaw = (StateManager.state && StateManager.state.header && StateManager.state.header.session) ? StateManager.state.header.session : '';
-        const normalized = normalizeSessionLabel(headerSessionRaw); // 'autumn'|'spring'|'unknown'
-
-        let sessionLabelHuman = null;
-        if (normalized === 'autumn') sessionLabelHuman = 'Automne';
-        else if (normalized === 'spring') sessionLabelHuman = 'Printemps';
-
-        let subjectsToShow = allSubjects;
-        let noteHtml = '';
-
-        if (!sessionLabelHuman) {
-            // session non définie : informer l'utilisateur et montrer tout
-            noteHtml = `<div class="list-note">Session non définie — affichage de toutes les matières</div>`;
-        } else {
-            // Filtrer filières correspondant à la session
-            const filieres = StateManager.state.filieres || [];
-            const filieresForSession = filieres
-                .filter(f => String(f.session || '').toLowerCase() === sessionLabelHuman.toLowerCase())
-                .map(f => String(f.nom || '').trim())
-                .filter(Boolean);
-
-            if (filieresForSession.length === 0) {
-                // pas de filières pour la session
-                this.containers.subjects.innerHTML = `
-                    <div class="list-header">
-                        <h3>📚 Matières (0)</h3>
-                    </div>
-                    <div class="empty-message">Aucune filière configurée pour la session ${safeText(sessionLabelHuman)}.</div>
-                `;
-                return;
-            }
-
-            // appliquer filtre sur les matières selon leur config.filiere
-            subjectsToShow = allSubjects.filter(s => {
-                const cfgFiliere = (s.config && s.config.filiere) ? String(s.config.filiere).trim()
-                    : (StateManager.state.matiereGroupes && StateManager.state.matiereGroupes[s.nom] ? StateManager.state.matiereGroupes[s.nom].filiere : '');
-                return cfgFiliere && filieresForSession.includes(cfgFiliere);
-            });
-
-            noteHtml = `<div class="list-note">Matières filtrées pour la session ${safeText(sessionLabelHuman)}</div>`;
-        }
-
-        const subjects = subjectsToShow || [];
+        const subjects = SubjectController.getAllSubjectsWithStats();
 
         let html = `
             <div class="list-header">
-                <h33>📚 Matières (${subjects.length})</h3>
+                <h3>📚 Matières (${subjects.length})</h3>
                 <button class="btn btn-sm btn-primary" onclick="window.EDTApp?.switchToConfigTab()">
                     ➕ Ajouter
                 </button>
             </div>
-            ${noteHtml}
             <div class="list-items">
         `;
 
         if (subjects.length === 0) {
-            html += '<p class="empty-message">Aucune matière enregistrée pour la sélection actuelle.</p>';
+            html += '<p class="empty-message">Aucune matière enregistrée. Utilisez le bouton "Ajouter" ou allez dans l\'onglet Configuration.</p>';
         } else {
             subjects.forEach(subject => {
                 html += this.renderSubjectItem(subject);
@@ -217,7 +165,7 @@ class ListRenderer {
                     </div>
                 </div>
                 <div class="item-details">
-                    <span class="detail-badge">🎓 ${safeText((subject.config && subject.config.filiere) || '')}</span>
+                    <span class="detail-badge">🎓 ${safeText(subject.config.filiere)}</span>
                     <span class="detail-badge">📅 ${subject.stats.totalSeances} séances</span>
                     <span class="detail-badge">⏰ ${subject.stats.vht} hTP</span>
                     <span class="detail-badge completion-badge ${completionClass}">
@@ -247,7 +195,7 @@ class ListRenderer {
         `;
 
         if (rooms.length === 0) {
-            html += `<p class="empty-message">Aucune salle enregistrée. Utilisez le bouton "Ajouter" ou allez dans l'onglet Configuration.</p>`;
+            html += '<p class="empty-message">Aucune salle enregistrée. Utilisez le bouton "Ajouter" ou allez dans l\'onglet Configuration.</p>';
         } else {
             rooms.forEach(room => {
                 html += this.renderRoomItem(room);
