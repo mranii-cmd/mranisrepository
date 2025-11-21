@@ -21,6 +21,7 @@ class StateManager {
             matiereGroupes: {},
             filieres: [],
             creneaux: {},
+            forfaits: [],
             
             // Souhaits et volumes
             enseignantSouhaits: {},
@@ -61,6 +62,7 @@ class StateManager {
         this.state.enseignantSouhaits = globalData.souhaits;
         this.state.matiereGroupes = globalData.matiereGroupes;
         this.state.filieres = globalData.filieres;
+        this.state.forfaits = globalData.forfaits || [];
         this.state.enseignantVolumesSupplementaires = globalData.volumesSupplementaires;
         this.state.creneaux = globalData.creneaux || { ...DEFAULT_CRENEAUX };
         this.state.volumesAutomne = globalData.volumesAutomne;
@@ -94,6 +96,7 @@ class StateManager {
             souhaits: this.state.enseignantSouhaits,
             matiereGroupes: this.state.matiereGroupes,
             filieres: this.state.filieres,
+            forfaits: this.state.forfaits,
             volumesSupplementaires: this.state.enseignantVolumesSupplementaires,
             creneaux: this.state.creneaux,
             volumesAutomne: this.state.volumesAutomne,

@@ -50,12 +50,14 @@ class VolumeRenderer {
         const seances = StateManager.getSeances();
         const subjects = StateManager.getCurrentSessionSubjects();
         const enseignants = StateManager.state.enseignants;
+        const forfaits = StateManager.state.forfaits || [];
 
         const globalMetrics = VolumeService.calculateGlobalVolumeMetrics(
             subjects,
             seances,
             enseignants.length,
-            StateManager.state.enseignantVolumesSupplementaires
+            StateManager.state.enseignantVolumesSupplementaires,
+            forfaits
         );
 
         return `
@@ -104,7 +106,8 @@ class VolumeRenderer {
             StateManager.getCurrentSessionSubjects(),
             seances,
             StateManager.state.enseignants.length,
-            StateManager.state.enseignantVolumesSupplementaires
+            StateManager.state.enseignantVolumesSupplementaires,
+            StateManager.state.forfaits || []
         );
 
         const VHM = globalMetrics.globalVHM;

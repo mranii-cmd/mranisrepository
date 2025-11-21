@@ -170,6 +170,106 @@ class ConfigListRenderer {
     }
 
     /**
+     * Rend la liste des forfaits
+     * @param {string} containerId - L'ID du conteneur
+     */
+    renderForfaitsList(containerId = 'forfaitsListContainer') {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        // Import ForfaitController dynamically
+        import('../controllers/ForfaitController.js').then(module => {
+            const ForfaitController = module.default;
+            const forfaits = ForfaitController.getAllForfaits();
+
+            if (forfaits.length === 0) {
+                container.innerHTML = '<div class="config-list-empty">Aucun forfait enregistré</div>';
+                return;
+            }
+
+            // Grouper par enseignant
+            const byTeacher = {};
+            forfaits.forEach(f => {
+                if (!byTeacher[f.enseignant]) {
+                    byTeacher[f.enseignant] = [];
+                }
+                byTeacher[f.enseignant].push(f);
+            });
+
+            let html = '<table class="forfaits-table"><thead><tr>';
+            html += '<th>Enseignant</th>';
+            html += '<th>Nature</th>';
+            html += '<th>Volume (h)</th>';
+            html += '<th>Description</th>';
+            html += '<th>Actions</th>';
+            html += '</tr></thead><tbody>';
+
+            // Trier les enseignants
+            const sortedTeachers = Object.keys(byTeacher).sort();
+
+            sortedTeachers.forEach(teacher => {
+                const teacherForfaits = byTeacher[teacher];
+                const totalVolume = teacherForfaits.reduce((sum, f) => sum + f.volumeHoraire, 0);
+
+                teacherForfaits.forEach((forfait, index) => {
+                    const badgeClass = ForfaitController.getBadgeClass(forfait.nature);
+                    
+                    html += '<tr>';
+                    
+                    // Enseignant (avec rowspan pour le premier forfait)
+                    if (index === 0) {
+                        html += `<td rowspan="${teacherForfaits.length}"><strong>${safeText(teacher)}</strong></td>`;
+                    }
+                    
+                    // Nature avec badge
+                    html += `<td><span class="forfait-badge ${badgeClass}">${safeText(forfait.nature)}</span></td>`;
+                    
+                    // Volume
+                    html += `<td>${forfait.volumeHoraire}h</td>`;
+                    
+                    // Description
+                    html += `<td>${safeText(forfait.description || '-')}</td>`;
+                    
+                    // Actions
+                    html += `<td><div class="forfait-actions">`;
+                    html += `<button class="btn btn-sm btn-warning" onclick="window.EDTForfaitController?.editForfait('${forfait.id}')">✏️ Modifier</button>`;
+                    html += `<button class="btn btn-sm btn-danger" onclick="window.EDTForfaitController?.deleteForfait('${forfait.id}')">🗑️</button>`;
+                    html += `</div></td>`;
+                    
+                    html += '</tr>';
+                });
+
+                // Ligne de total par enseignant
+                html += `<tr class="forfait-summary">`;
+                html += `<td colspan="2"><strong>Total ${safeText(teacher)}</strong></td>`;
+                html += `<td><strong>${totalVolume}h</strong></td>`;
+                html += `<td colspan="2"></td>`;
+                html += `</tr>`;
+            });
+
+            html += '</tbody></table>';
+
+            // Ajouter un résumé global
+            const totalGlobal = forfaits.reduce((sum, f) => sum + f.volumeHoraire, 0);
+            const volumesByNature = ForfaitController.getVolumesByNature();
+
+            html += '<div class="forfait-summary" style="margin-top: 20px;">';
+            html += '<h4>📊 Résumé Global</h4>';
+            html += `<p><strong>Total des forfaits :</strong> ${totalGlobal}h</p>`;
+            html += '<p><strong>Par nature :</strong></p><ul>';
+            
+            Object.entries(volumesByNature).forEach(([nature, volume]) => {
+                const badgeClass = ForfaitController.getBadgeClass(nature);
+                html += `<li><span class="forfait-badge ${badgeClass}">${safeText(nature)}</span> : ${volume}h</li>`;
+            });
+            
+            html += '</ul></div>';
+
+            container.innerHTML = html;
+        });
+    }
+
+    /**
      * Rend toutes les listes
      */
     renderAll() {
@@ -177,6 +277,7 @@ class ConfigListRenderer {
         this.renderMatieresList();
         this.renderSallesList();
         this.renderFilieresList();
+        this.renderForfaitsList();
     }
 
     /**

@@ -13,6 +13,7 @@ import SessionController from './controllers/SessionController.js';
 import TeacherController from './controllers/TeacherController.js';
 import SubjectController from './controllers/SubjectController.js';
 import RoomController from './controllers/RoomController.js';
+import ForfaitController from './controllers/ForfaitController.js';
 import StorageService from './services/StorageService.js';
 import LogService from './services/LogService.js';
 import ConflictService from './services/ConflictService.js';
@@ -241,6 +242,31 @@ class EDTApplication {
                 FormHandlers.handleFiliereFormSubmit(e);
             });
         }
+
+        // Formulaire de forfait
+        const formForfait = document.getElementById('formAjouterForfait');
+        if (formForfait) {
+            formForfait.addEventListener('submit', (e) => {
+                this.handleForfaitFormSubmit(e);
+            });
+        }
+
+        // Bouton reset formulaire forfait
+        const btnResetForfaitForm = document.getElementById('btnResetForfaitForm');
+        if (btnResetForfaitForm) {
+            btnResetForfaitForm.addEventListener('click', () => {
+                this.resetForfaitForm();
+                NotificationManager.info('Formulaire réinitialisé', 2000);
+            });
+        }
+
+        // Bouton cancel forfait edit
+        const btnCancelForfaitEdit = document.getElementById('btnCancelForfaitEdit');
+        if (btnCancelForfaitEdit) {
+            btnCancelForfaitEdit.addEventListener('click', () => {
+                this.cancelForfaitEdit();
+            });
+        }
     }
 
     /**
@@ -298,6 +324,21 @@ class EDTApplication {
 
         // Peupler les selects de souhaits
         this.populateWishesSelects();
+
+        // Peupler les selects de forfaits
+        this.populateForfaitSelects();
+    }
+
+    /**
+     * Peuple le sélecteur d'enseignants pour les forfaits
+     */
+    populateForfaitSelects() {
+        const selectEnseignantForfait = document.getElementById('selectEnseignantForfait');
+        if (selectEnseignantForfait) {
+            const enseignants = StateManager.state.enseignants;
+            selectEnseignantForfait.innerHTML = '<option value="">-- Sélectionner un enseignant --</option>' +
+                enseignants.map(e => `<option value="${e}">${e}</option>`).join('');
+        }
     }
 
     /**
@@ -491,6 +532,10 @@ class EDTApplication {
             case 'filieres':
                 ConfigListRenderer.renderFilieresList();
                 break;
+            case 'forfaits':
+                ConfigListRenderer.renderForfaitsList();
+                this.populateForfaitSelects();
+                break;
         }
     }
 
@@ -637,6 +682,13 @@ class EDTApplication {
         if (btnExportVolumes) {
             btnExportVolumes.addEventListener('click', () => {
                 ExportHandlers.exportVolumes();
+            });
+        }
+
+        const btnExportForfaits = document.getElementById('btnExportForfaits');
+        if (btnExportForfaits) {
+            btnExportForfaits.addEventListener('click', () => {
+                ExportHandlers.exportForfaits();
             });
         }
 
@@ -928,6 +980,7 @@ class EDTApplication {
         StateManager.subscribe('teacher:added', () => {
             this.populateTeacherSelects();
             this.populateWishesSelects();
+            this.populateForfaitSelects();
             ConfigListRenderer.renderEnseignantsList();
             this.renderAll();
         });
@@ -935,6 +988,7 @@ class EDTApplication {
         StateManager.subscribe('teacher:removed', () => {
             this.populateTeacherSelects();
             this.populateWishesSelects();
+            this.populateForfaitSelects();
             ConfigListRenderer.renderEnseignantsList();
             this.renderAll();
         });
@@ -948,6 +1002,21 @@ class EDTApplication {
         StateManager.subscribe('subject:removed', () => {
             this.populateFormSelects();
             ConfigListRenderer.renderMatieresList();
+            this.renderAll();
+        });
+
+        StateManager.subscribe('forfait:added', () => {
+            ConfigListRenderer.renderForfaitsList();
+            this.renderAll();
+        });
+
+        StateManager.subscribe('forfait:updated', () => {
+            ConfigListRenderer.renderForfaitsList();
+            this.renderAll();
+        });
+
+        StateManager.subscribe('forfait:deleted', () => {
+            ConfigListRenderer.renderForfaitsList();
             this.renderAll();
         });
 
@@ -1115,6 +1184,137 @@ class EDTApplication {
     }
 
     /**
+     * Gère la soumission du formulaire de forfait
+     * @param {Event} e - L'événement de soumission
+     */
+    handleForfaitFormSubmit(e) {
+        e.preventDefault();
+
+        const enseignant = document.getElementById('selectEnseignantForfait').value;
+        const nature = document.getElementById('selectNatureForfait').value;
+        const volumeHoraire = document.getElementById('inputVolumeHoraireForfait').value;
+        const description = document.getElementById('inputDescriptionForfait').value;
+
+        const editingId = document.getElementById('formAjouterForfait').dataset.editingId;
+
+        if (editingId) {
+            // Mode édition
+            const success = ForfaitController.updateForfait(editingId, {
+                nature,
+                volumeHoraire,
+                description
+            });
+
+            if (success) {
+                this.resetForfaitForm();
+                this.cancelForfaitEdit();
+            }
+        } else {
+            // Mode ajout
+            const forfait = ForfaitController.addForfait({
+                enseignant,
+                nature,
+                volumeHoraire,
+                description
+            });
+
+            if (forfait) {
+                this.resetForfaitForm();
+            }
+        }
+    }
+
+    /**
+     * Réinitialise le formulaire de forfait
+     */
+    resetForfaitForm() {
+        const form = document.getElementById('formAjouterForfait');
+        if (form) {
+            form.reset();
+            delete form.dataset.editingId;
+        }
+
+        const btnCancel = document.getElementById('btnCancelForfaitEdit');
+        const btnSubmit = document.getElementById('btnAjouterForfait');
+        
+        if (btnCancel) btnCancel.style.display = 'none';
+        if (btnSubmit) btnSubmit.textContent = '➕ Ajouter le Forfait';
+
+        // Réactiver le champ enseignant
+        const selectEnseignant = document.getElementById('selectEnseignantForfait');
+        if (selectEnseignant) selectEnseignant.disabled = false;
+    }
+
+    /**
+     * Annule l'édition d'un forfait
+     */
+    cancelForfaitEdit() {
+        this.resetForfaitForm();
+        NotificationManager.info('Édition annulée', 2000);
+    }
+
+    /**
+     * Édite un forfait
+     * @param {string} id - L'ID du forfait
+     */
+    editForfait(id) {
+        const forfaits = ForfaitController.getAllForfaits();
+        const forfait = forfaits.find(f => f.id === id);
+
+        if (!forfait) {
+            DialogManager.error('Forfait introuvable');
+            return;
+        }
+
+        // Activer le sous-onglet forfaits
+        document.querySelectorAll('.sub-tab-btn').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.sub-tab-pane').forEach(pane => pane.classList.remove('active'));
+
+        const forfaitBtn = document.querySelector('.sub-tab-btn[data-subtab="forfaits"]');
+        const forfaitPane = document.getElementById('subtab-forfaits');
+
+        if (forfaitBtn) forfaitBtn.classList.add('active');
+        if (forfaitPane) forfaitPane.classList.add('active');
+
+        // Remplir le formulaire
+        const form = document.getElementById('formAjouterForfait');
+        const selectEnseignant = document.getElementById('selectEnseignantForfait');
+        const selectNature = document.getElementById('selectNatureForfait');
+        const inputVolume = document.getElementById('inputVolumeHoraireForfait');
+        const inputDescription = document.getElementById('inputDescriptionForfait');
+
+        if (selectEnseignant) {
+            selectEnseignant.value = forfait.enseignant;
+            selectEnseignant.disabled = true; // Empêcher le changement d'enseignant
+        }
+        if (selectNature) selectNature.value = forfait.nature;
+        if (inputVolume) inputVolume.value = forfait.volumeHoraire;
+        if (inputDescription) inputDescription.value = forfait.description || '';
+
+        // Mettre en mode édition
+        if (form) form.dataset.editingId = id;
+
+        const btnCancel = document.getElementById('btnCancelForfaitEdit');
+        const btnSubmit = document.getElementById('btnAjouterForfait');
+        
+        if (btnCancel) btnCancel.style.display = 'inline-block';
+        if (btnSubmit) btnSubmit.textContent = '💾 Mettre à jour le Forfait';
+
+        // Scroll vers le formulaire
+        if (form) form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+        NotificationManager.info(`Édition du forfait de ${forfait.enseignant}`, 3000);
+    }
+
+    /**
+     * Supprime un forfait (appelé depuis ConfigListRenderer)
+     * @param {string} id - L'ID du forfait
+     */
+    deleteForfait(id) {
+        ForfaitController.deleteForfait(id);
+    }
+
+    /**
      * Exporte le projet complet
      */
     exportProject() {
@@ -1258,6 +1458,7 @@ window.EDTSessionController = SessionController;
 window.EDTTeacherController = TeacherController;
 window.EDTSubjectController = SubjectController;
 window.EDTRoomController = RoomController;
+window.EDTForfaitController = ForfaitController;
 
 // Services
 window.EDTLog = LogService;

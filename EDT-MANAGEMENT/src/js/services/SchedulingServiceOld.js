@@ -4,7 +4,7 @@
  */
 
 import { LISTE_JOURS, MAX_AUTO_PLANNING_ITERATIONS } from '../config/constants.js';
-import { getSortedCreneauxKeys, isAfternoonCreneau } from '../utils/helpers.js';
+import { getSortedCreneauxKeys, getPrioritizedCreneauxKeys, isAfternoonCreneau } from '../utils/helpers.js';
 import Session from '../models/Session.js';
 import StateManager from '../controllers/StateManager.js';
 import ConflictService from './ConflictService.js';
@@ -186,7 +186,31 @@ class SchedulingService {
                 // Créer la séance
                 const session = this.createSessionTemplate(subject, 'TD', sectionName, groupeName);
 
-                // Trouver un créneau disponible
+                // Essayer d'abord la planification par paire (nouvelle optimisation)
+                // Cela fonctionne mieux si possible de faire un binôme avec un autre groupe
+                let slotFound = false;
+
+                if (g % 2 === 1 && g < nbGroupes) {
+                    // Groupe impair (G1, G3, etc.) - essayer de créer une paire avec le groupe suivant
+                    const pairedSlot = this.tryPairedTDScheduling(
+                        subject, 
+                        sectionName, 
+                        g, 
+                        existingSeances, 
+                        options
+                    );
+
+                    if (pairedSlot) {
+                        slotFound = true;
+                        // La paire a été créée, on peut passer au groupe suivant
+                        g++; // Sauter le groupe pair car il a été créé avec son binôme
+                        stats.total++; // Comptabiliser le groupe pair
+                        stats.created += 2; // Deux séances créées (paire)
+                        continue;
+                    }
+                }
+
+                // Si pas de paire possible, planification classique
                 const slot = this.findAvailableSlot(session, options);
 
                 if (!slot) {
@@ -217,6 +241,210 @@ class SchedulingService {
         }
 
         return stats;
+    }
+
+    /**
+     * Essaye de planifier deux groupes de TD en binôme avec échange de matières
+     * Exemple: G1 matière A slot1, G2 matière B slot1, puis G1 matière B slot2, G2 matière A slot2
+     * @param {Subject} currentSubject - La matière actuelle
+     * @param {string} sectionName - Nom de la section
+     * @param {number} groupIndex - Index du premier groupe (impair)
+     * @param {Array<Session>} existingSeances - Séances existantes
+     * @param {Object} options - Options
+     * @returns {boolean} true si paire créée avec succès
+     */
+    tryPairedTDScheduling(currentSubject, sectionName, groupIndex, existingSeances, options) {
+        // Récupérer toutes les matières de la même filière pour faire des paires
+        const allSubjects = StateManager.getCurrentSessionSubjects();
+        const sameFiliere = allSubjects.filter(s => 
+            s.filiere === currentSubject.filiere && 
+            s.nom !== currentSubject.nom &&
+            s.td_groups >= (groupIndex + 1) // Assurer qu'elle a assez de groupes
+        );
+
+        if (sameFiliere.length === 0) {
+            return false; // Pas de matière partenaire possible
+        }
+
+        const group1Name = `G${groupIndex}`;
+        const group2Name = `G${groupIndex + 1}`;
+
+        // Essayer de trouver une matière partenaire pour créer le binôme
+        for (const partnerSubject of sameFiliere) {
+            // Vérifier que les deux groupes de cette matière partenaire n'existent pas déjà
+            const partner1Entity = Session.generateUniqueStudentEntity(
+                partnerSubject.filiere,
+                sectionName,
+                'TD',
+                group1Name
+            );
+            const partner2Entity = Session.generateUniqueStudentEntity(
+                partnerSubject.filiere,
+                sectionName,
+                'TD',
+                group2Name
+            );
+
+            const partner1Exists = existingSeances.some(s => s.uniqueStudentEntity === partner1Entity);
+            const partner2Exists = existingSeances.some(s => s.uniqueStudentEntity === partner2Entity);
+
+            if (partner1Exists || partner2Exists) {
+                continue; // Cette matière partenaire ne peut pas être utilisée
+            }
+
+            // Essayer de trouver deux créneaux consécutifs disponibles
+            const pairedSlots = this.findPairedTDSlots(
+                currentSubject,
+                partnerSubject,
+                sectionName,
+                group1Name,
+                group2Name,
+                options
+            );
+
+            if (pairedSlots) {
+                // Créer les 4 séances (2 groupes × 2 matières, avec échange de créneaux)
+                this.createPairedTDSessions(
+                    currentSubject,
+                    partnerSubject,
+                    sectionName,
+                    group1Name,
+                    group2Name,
+                    pairedSlots,
+                    options
+                );
+                LogService.info(`✨ Binôme TD créé: ${group1Name}/${group2Name} - ${currentSubject.nom}/${partnerSubject.nom}`);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Trouve deux créneaux consécutifs pour planifier des TDs en binôme
+     * @param {Subject} subject1 - Première matière
+     * @param {Subject} subject2 - Deuxième matière
+     * @param {string} sectionName - Nom de la section
+     * @param {string} group1Name - Nom du premier groupe
+     * @param {string} group2Name - Nom du deuxième groupe
+     * @param {Object} options - Options
+     * @returns {Object|null} { jour, creneau1, creneau2 } ou null
+     */
+    findPairedTDSlots(subject1, subject2, sectionName, group1Name, group2Name, options) {
+        const sortedCreneaux = getPrioritizedCreneauxKeys();  // Priorité aux 4 premiers créneaux
+        const allSeances = StateManager.getSeances();
+        const sallesInfo = StateManager.state.sallesInfo;
+
+        // Essayer chaque jour de la semaine
+        for (const jour of LISTE_JOURS) {
+            // Essayer chaque paire de créneaux consécutifs
+            for (let i = 0; i < sortedCreneaux.length - 1; i++) {
+                const creneau1 = sortedCreneaux[i];
+                const creneau2 = sortedCreneaux[i + 1];
+
+                // Créer les 4 séances temporaires pour vérifier les conflits
+                const sessions = [
+                    this.createSessionTemplate(subject1, 'TD', sectionName, group1Name), // G1 - Matière 1 - Slot 1
+                    this.createSessionTemplate(subject2, 'TD', sectionName, group2Name), // G2 - Matière 2 - Slot 1
+                    this.createSessionTemplate(subject2, 'TD', sectionName, group1Name), // G1 - Matière 2 - Slot 2
+                    this.createSessionTemplate(subject1, 'TD', sectionName, group2Name)  // G2 - Matière 1 - Slot 2
+                ];
+
+                sessions[0].jour = jour;
+                sessions[0].creneau = creneau1;
+                sessions[1].jour = jour;
+                sessions[1].creneau = creneau1;
+                sessions[2].jour = jour;
+                sessions[2].creneau = creneau2;
+                sessions[3].jour = jour;
+                sessions[3].creneau = creneau2;
+
+                // Vérifier qu'il n'y a pas de conflits pour les 4 séances
+                let hasConflict = false;
+                for (const tempSession of sessions) {
+                    const conflicts = ConflictService.checkAllConflicts(
+                        tempSession,
+                        allSeances,
+                        [],
+                        sallesInfo
+                    );
+
+                    if (conflicts.length > 0 && options.avoidConflicts) {
+                        hasConflict = true;
+                        break;
+                    }
+                }
+
+                if (!hasConflict) {
+                    return { jour, creneau1, creneau2 };
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Crée les 4 séances pour un binôme de groupes TD avec échange de matières
+     * @param {Subject} subject1 - Première matière
+     * @param {Subject} subject2 - Deuxième matière
+     * @param {string} sectionName - Nom de la section
+     * @param {string} group1Name - Nom du premier groupe
+     * @param {string} group2Name - Nom du deuxième groupe
+     * @param {Object} slots - { jour, creneau1, creneau2 }
+     * @param {Object} options - Options
+     */
+    createPairedTDSessions(subject1, subject2, sectionName, group1Name, group2Name, slots, options) {
+        const { jour, creneau1, creneau2 } = slots;
+
+        // G1 - Matière 1 - Slot 1
+        const session1 = this.createSessionTemplate(subject1, 'TD', sectionName, group1Name);
+        session1.jour = jour;
+        session1.creneau = creneau1;
+        if (options.assignTeachers) {
+            session1.setTeachers(this.assignTeachersToSession(session1, options));
+        }
+        if (options.assignRooms) {
+            session1.setRoom(this.assignRoomToSession(session1));
+        }
+        StateManager.addSeance(session1);
+
+        // G2 - Matière 2 - Slot 1
+        const session2 = this.createSessionTemplate(subject2, 'TD', sectionName, group2Name);
+        session2.jour = jour;
+        session2.creneau = creneau1;
+        if (options.assignTeachers) {
+            session2.setTeachers(this.assignTeachersToSession(session2, options));
+        }
+        if (options.assignRooms) {
+            session2.setRoom(this.assignRoomToSession(session2));
+        }
+        StateManager.addSeance(session2);
+
+        // G1 - Matière 2 - Slot 2
+        const session3 = this.createSessionTemplate(subject2, 'TD', sectionName, group1Name);
+        session3.jour = jour;
+        session3.creneau = creneau2;
+        if (options.assignTeachers) {
+            session3.setTeachers(this.assignTeachersToSession(session3, options));
+        }
+        if (options.assignRooms) {
+            session3.setRoom(this.assignRoomToSession(session3));
+        }
+        StateManager.addSeance(session3);
+
+        // G2 - Matière 1 - Slot 2
+        const session4 = this.createSessionTemplate(subject1, 'TD', sectionName, group2Name);
+        session4.jour = jour;
+        session4.creneau = creneau2;
+        if (options.assignTeachers) {
+            session4.setTeachers(this.assignTeachersToSession(session4, options));
+        }
+        if (options.assignRooms) {
+            session4.setRoom(this.assignRoomToSession(session4));
+        }
+        StateManager.addSeance(session4);
     }
 
     /**
@@ -343,7 +571,7 @@ class SchedulingService {
      * @returns {Object|null} { jour, creneau } ou null
      */
     findAvailableSlot(session, options) {
-        const sortedCreneaux = getSortedCreneauxKeys();
+        const sortedCreneaux = getPrioritizedCreneauxKeys();  // Priorité aux 4 premiers créneaux
         const allSeances = StateManager.getSeances();
         const sallesInfo = StateManager.state.sallesInfo;
 
@@ -355,6 +583,19 @@ class SchedulingService {
                 iterations++;
                 if (iterations > maxIterations) {
                     return null;
+                }
+
+                // CONTRAINTE: Ne pas planifier des Cours de la même matière en parallèle
+                // Vérifier qu'aucun Cours de la même matière n'est déjà planifié au même créneau
+                if (session.type === 'Cours') {
+                    const parallelCoursExists = allSeances.some(s => 
+                        s.type === 'Cours' && 
+                        s.matiere === session.matiere &&
+                        s.jour === jour &&
+                        s.creneau === creneau
+                    );
+
+                    if (parallelCoursExists) continue;
                 }
 
                 // Créer une copie temporaire
@@ -386,7 +627,7 @@ class SchedulingService {
      * @returns {Object|null} { jour, creneau, creneauCoupled } ou null
      */
     findAvailableCoupledSlot(session, options) {
-        const sortedCreneaux = getSortedCreneauxKeys();
+        const sortedCreneaux = getPrioritizedCreneauxKeys();  // Priorité aux 4 premiers créneaux
         const allSeances = StateManager.getSeances();
         const sallesInfo = StateManager.state.sallesInfo;
         const { CRENEAUX_COUPLES_SUIVANT } = await import('../config/constants.js');
@@ -396,6 +637,17 @@ class SchedulingService {
                 const creneauCoupled = CRENEAUX_COUPLES_SUIVANT[creneau];
 
                 if (!creneauCoupled) continue;
+
+                // CONTRAINTE: Ne pas planifier des TP de la même matière en parallèle
+                // Vérifier qu'aucun TP de la même matière n'est déjà planifié au même créneau
+                const parallelTPExists = allSeances.some(s => 
+                    s.type === 'TP' && 
+                    s.matiere === session.matiere &&
+                    s.jour === jour &&
+                    (s.creneau === creneau || s.creneau === creneauCoupled)
+                );
+
+                if (parallelTPExists) continue;
 
                 // Vérifier le premier créneau
                 const tempSession1 = session.clone();
@@ -447,7 +699,7 @@ class SchedulingService {
 
         const teachers = StateManager.getTeachers();
         const allSeances = StateManager.getSeances();
-        const sortedCreneaux = getSortedCreneauxKeys();
+        const sortedCreneaux = getPrioritizedCreneauxKeys();  // Priorité aux 4 premiers créneaux
 
         // Calculer les volumes actuels
         const allVolumes = VolumeService.calculateAllVolumes(
@@ -462,7 +714,8 @@ class SchedulingService {
             StateManager.getCurrentSessionSubjects(),
             allSeances,
             StateManager.state.enseignants.length,
-            StateManager.state.enseignantVolumesSupplementaires
+            StateManager.state.enseignantVolumesSupplementaires,
+            StateManager.state.forfaits || []
         );
 
         const maxWorkload = globalMetrics.globalVHM * 1.5; // Tolérance 150%

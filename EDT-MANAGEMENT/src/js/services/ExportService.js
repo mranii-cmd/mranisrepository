@@ -160,7 +160,8 @@ class ExportService {
             subjects,
             seances,
             StateManager.state.enseignants.length,
-            StateManager.state.enseignantVolumesSupplementaires
+            StateManager.state.enseignantVolumesSupplementaires,
+            StateManager.state.forfaits || []
         );
 
         doc.setFontSize(12);
@@ -374,13 +375,77 @@ class ExportService {
         doc.setFont(undefined, 'normal');
         doc.text(`${departement} | ${annee} | ${session}`, 148, 22, { align: 'center' });
 
-        // Tableau récapitulatif des interventions
+        // Informations de volume horaire
         let currentY = 30;
+        currentY = this.addTeacherVolumeInfo(doc, enseignant, allSeances, currentY);
+
+        // Tableau récapitulatif des interventions
+        currentY += 5;
         currentY = this.addTeacherInterventionsTable(doc, enseignant, seancesEnseignant, currentY);
 
         // Emploi du temps détaillé
         currentY += 5;
         this.addTeacherScheduleTable(doc, seancesEnseignant, currentY);
+    }
+
+    /**
+     * Ajoute les informations de volume horaire de l'enseignant
+     * @param {Object} doc - Document jsPDF
+     * @param {string} enseignant - Le nom de l'enseignant
+     * @param {Array} allSeances - Toutes les séances
+     * @param {number} startY - Position Y de départ
+     * @returns {number} Nouvelle position Y
+     */
+    addTeacherVolumeInfo(doc, enseignant, allSeances, startY) {
+        // Calculer les volumes de l'enseignant
+        const enseignants = StateManager.state.enseignants;
+        const forfaits = StateManager.state.forfaits || [];
+        
+        // Calculer les détails de volume pour cet enseignant
+        const volumeDetails = VolumeService.calculateTeacherVolumeDetails(
+            enseignant,
+            allSeances,
+            StateManager.state.enseignantVolumesSupplementaires
+        );
+
+        const globalMetrics = VolumeService.calculateGlobalVolumeMetrics(
+            StateManager.getCurrentSessionSubjects(),
+            allSeances,
+            enseignants.length,
+            StateManager.state.enseignantVolumesSupplementaires,
+            forfaits
+        );
+
+        // Volume d'enseignement (séances planifiées)
+        const volumeEnseignement = volumeDetails.enseignement || 0;
+
+        // Calculer le volume des forfaits de cet enseignant
+        const volumeForfait = forfaits
+            .filter(f => f.enseignant === enseignant)
+            .reduce((sum, f) => sum + f.volumeHoraire, 0);
+
+        const volumeTotal = volumeEnseignement + volumeForfait;
+        const VHM = globalMetrics.globalVHM;
+
+        // Afficher les informations sur une seule ligne
+        doc.setFontSize(10);
+        doc.setFont(undefined, 'bold');
+        
+        // Construire le texte sur une seule ligne
+        const ecart = volumeTotal - VHM;
+        let ecartText = '';
+        if (ecart > 0) {
+            ecartText = ` (+${ecart}h)`;
+        } else if (ecart < 0) {
+            ecartText = ` (${ecart}h)`;
+        }
+        
+        const volumeText = `Vol. Enseignement: ${volumeEnseignement}hTP | Vol. Forfait: ${volumeForfait}hTP | Vol. Total: ${volumeTotal}hTP | VHM: ${VHM}hTP${ecartText}`;
+        
+        doc.setFont(undefined, 'normal');
+        doc.text(volumeText, 14, startY);
+
+        return startY + 3;
     }
 
     /**
@@ -421,8 +486,12 @@ class ExportService {
         const formatIntervenants = (set) => {
             if (set.size === 0) return '-';
 
-            const liste = Array.from(set).sort();
-            return liste.map(ens => ens === enseignant ? `[*] ${ens}` : ens).join(', ');
+            // Retirer l'enseignant concerné de la liste
+            const liste = Array.from(set)
+                .filter(ens => ens !== enseignant)
+                .sort();
+            
+            return liste.length > 0 ? liste.join(', ') : '-';
         };
 
         const tableData = [];
@@ -445,14 +514,10 @@ class ExportService {
         doc.setFont('helvetica', 'bold');
         doc.text('Recapitulatif des Interventions par Matiere', 14, startY);
 
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'italic');
-        doc.text('([*] = vous intervenez dans ce type de seance)', 14, startY + 4);
-
         doc.autoTable({
             head: [['Matiere', 'Intervenants Cours', 'Intervenants TD', 'Intervenants TP']],
             body: tableData,
-            startY: startY + 8,
+            startY: startY + 5,
             theme: 'grid',
             styles: {
                 font: 'helvetica',
@@ -472,16 +537,7 @@ class ExportService {
                 2: { cellWidth: 60 },
                 3: { cellWidth: 60 }
             },
-            margin: { left: 14, right: 14 },
-            didParseCell: (data) => {
-                if (data.section === 'body' && data.column.index > 0) {
-                    const cellValue = data.cell.text.join('');
-                    if (cellValue.includes('[*]')) {
-                        data.cell.styles.fontStyle = 'bold';
-                        data.cell.styles.textColor = [0, 100, 0];
-                    }
-                }
-            }
+            margin: { left: 14, right: 14 }
         });
 
         return doc.lastAutoTable.finalY;

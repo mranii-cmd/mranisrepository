@@ -922,3 +922,76 @@
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(23, 162, 184, 0.4);
 }
+
+/* === Forfaits Styles === */
+.forfait-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 0.85em;
+    font-weight: 600;
+    color: white;
+    text-align: center;
+}
+
+.forfait-badge-chef {
+    background: linear-gradient(135deg, #9333ea 0%, #7c3aed 100%);
+}
+
+.forfait-badge-college {
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+}
+
+.forfait-badge-master {
+    background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+}
+
+.forfait-badge-coordonnateur {
+    background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%);
+}
+
+.forfait-badge-autres {
+    background: linear-gradient(135deg, #64748b 0%, #475569 100%);
+}
+
+.forfaits-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+}
+
+.forfaits-table th,
+.forfaits-table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.forfaits-table th {
+    background: #f8f9fa;
+    font-weight: 600;
+    color: #495057;
+    font-size: 0.9em;
+    text-transform: uppercase;
+}
+
+.forfaits-table tr:hover {
+    background: #f8f9fa;
+}
+
+.forfait-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.forfait-summary {
+    background: #e7f3ff;
+    border-left: 4px solid #2196F3;
+    padding: 15px;
+    border-radius: 4px;
+    margin-top: 15px;
+}
+
+.forfait-summary strong {
+    color: #1976D2;
+}
